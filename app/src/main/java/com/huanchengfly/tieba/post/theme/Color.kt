@@ -1,0 +1,43 @@
+package com.huanchengfly.tieba.post.theme
+
+import androidx.compose.ui.graphics.Color
+
+val Blue200 = Color(0xFF90CAF9)
+
+val BlueGrey700 = Color(0xFF455A64)
+
+val Green700 = Color(0xFF388E3C)
+val Green800 = Color(0xFF2E7D32)
+
+val Grey50 = Color(0xFFFAFAFA)
+val Grey100 = Color(0xFFF5F5F5)
+val Grey200 = Color(0xFFEEEEEE)
+val Grey300 = Color(0xFFE0E0E0)
+val Grey400 = Color(0xFFBDBDBD)
+val Grey500 = Color(0xFF9E9E9E)
+val Grey600 = Color(0xFF757575)
+val Grey700 = Color(0xFF616161)
+val Grey800 = Color(0xFF424242)
+val Grey900 = Color(0xFF212121)
+
+val Cyan700 = Color(0xFF0097A7)
+val Cyan800 = Color(0xFF00838F)
+
+val OrangeA700 = Color(0xFFFF6D00)
+
+val YellowA700 = Color(0xFFFFD600)
+
+val Purple100 = Color(0xFFE1BEE7)
+val Purple700 = Color(0xFF7B1FA2)
+val Purple800 = Color(0xFF4527A0)
+
+val RedA700 = Color(0xFFD50000)
+val Red700 = Color(0xFFD32F2F)
+val Red800 = Color(0xFFC62828)
+
+// Primary color of Built-in Themes
+val BlueViolet = Color(0xFF8A2BE2)
+val JadeGreen = Color(0xFF019C74)
+val MerlotPink = Color(0xFFE986A7)
+val SunsetOrange = Color(0xFFFD742D)
+val TiebaBlue = Color(0xFF4477E0)

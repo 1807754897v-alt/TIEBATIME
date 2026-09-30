@@ -1,0 +1,258 @@
+package com.huanchengfly.tieba.post.ui.page.main.explore.concern
+
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.Stable
+import androidx.compose.ui.util.fastMap
+import androidx.lifecycle.viewModelScope
+import com.huanchengfly.tieba.post.api.retrofit.exception.TiebaNotLoggedInException
+import com.huanchengfly.tieba.post.arch.BaseStateViewModel
+import com.huanchengfly.tieba.post.arch.CommonUiEvent
+import com.huanchengfly.tieba.post.arch.TbLiteExceptionHandler
+import com.huanchengfly.tieba.post.arch.UiState
+import com.huanchengfly.tieba.post.arch.emitGlobalEventSuspend
+import com.huanchengfly.tieba.post.arch.stateInViewModel
+import com.huanchengfly.tieba.post.models.database.HiddenThread
+import com.huanchengfly.tieba.post.repository.ExploreRepository
+import com.huanchengfly.tieba.post.repository.ExploreRepository.Companion.distinctById
+import com.huanchengfly.tieba.post.repository.HiddenThreadRepository
+import com.huanchengfly.tieba.post.repository.user.SettingsRepository
+import com.huanchengfly.tieba.post.ui.models.Like
+import com.huanchengfly.tieba.post.ui.models.ThreadItem
+import com.huanchengfly.tieba.post.ui.page.main.explore.ExplorePageItem
+import com.huanchengfly.tieba.post.ui.page.thread.ThreadLikeUiEvent
+import com.huanchengfly.tieba.post.utils.extension.set
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.withContext
+import javax.inject.Inject
+
+@Immutable
+data class ConcernUiState(
+    val isRefreshing: Boolean = true,
+    val isLoadingMore: Boolean = false,
+    val hasMore: Boolean = true,
+    val lastRequestUnix: Long = 0,
+    val nextPageTag: String = "",
+    val data: List<ThreadItem> = emptyList(),
+    val error: Throwable? = null
+): UiState {
+
+    val isEmpty: Boolean
+        get() = data.isEmpty()
+}
+
+@Stable
+@HiltViewModel
+class ConcernViewModel @Inject constructor(
+    private val exploreRepo: ExploreRepository,
+    private val hiddenRepo: HiddenThreadRepository,
+    settingsRepository: SettingsRepository,
+) : BaseStateViewModel<ConcernUiState>() {
+
+    val hideBlockedContent: StateFlow<Boolean> = settingsRepository.blockSettings
+        .map { it.hideBlocked }
+        .stateInViewModel(initialValue = false)
+
+    override val errorHandler = TbLiteExceptionHandler(TAG) { _, e, suppressed ->
+        // Allow user browse existing content on suppressed exceptions
+        if (suppressed && currentState.isEmpty) {
+            _uiState.update { it.copy(isRefreshing = false, isLoadingMore = false, error = null) }
+            sendUiEvent(CommonUiEvent.ToastError(e))
+        } else {
+            _uiState.update { it.copy(isRefreshing = false, isLoadingMore = false, error = e) }
+        }
+    }
+
+    private var loadMoreJob: Job? = null
+
+    override fun createInitialState(): ConcernUiState = ConcernUiState(isRefreshing = true)
+
+    init {
+        refreshInternal(cached = true)
+    }
+
+    private fun refreshInternal(cached: Boolean) = launchInVM(errorHandler) {
+        var lastRequestUnix: Long? = null
+        _uiState.update {
+            lastRequestUnix = it.lastRequestUnix.takeUnless { time -> time == 0L }
+            // Allow user browse existing content and disable loadMore
+            it.copy(isRefreshing = true, hasMore = false, error = null)
+        }
+        loadMoreJob?.cancel()
+        val rec = exploreRepo.refreshUserLike(lastRequestUnix, cached)
+        val data = rec.threads.distinctById()
+        _uiState.set {
+            copy(isRefreshing = false, hasMore = rec.hasMore, lastRequestUnix = rec.requestUnix, nextPageTag = rec.pageTag, data = data)
+        }
+    }
+
+    fun onRefresh() {
+        if (!currentState.isRefreshing) refreshInternal(cached = false)
+    }
+
+    fun onLoadMore() {
+        val oldState = currentState
+        if (oldState.isLoadingMore || oldState.isRefreshing) return
+
+        _uiState.set { copy(isLoadingMore = true) }
+        loadMoreJob?.cancel()
+        loadMoreJob = launchJobInVM {
+            val rec = exploreRepo.loadUserLike(oldState.nextPageTag, oldState.lastRequestUnix)
+            val data = (oldState.data + rec.threads).distinctById()
+            ensureActive()
+            _uiState.update {
+                it.copy(isLoadingMore = false, hasMore = rec.hasMore, lastRequestUnix = rec.requestUnix, nextPageTag = rec.pageTag, data = data)
+            }
+        }
+    }
+
+    /**
+     * Called when user clicked like button on target [ThreadItem]
+     * */
+    fun onThreadLikeClicked(thread: ThreadItem) = launchInVM {
+        updateLikeStatusUiStateCommon(
+            thread = thread,
+            onRequestLikeThread = { exploreRepo.onLikeThread(it, ExplorePageItem.Concern) },
+            onEvent = ::emitGlobalEventSuspend
+        ) { threadId, liked, loading ->
+            val newData = currentState.data.updateLikeStatus(threadId, liked, loading)
+            _uiState.update { it.copy(data = newData) }
+        }
+    }
+
+    fun hideThread(thread: ThreadItem) {
+        viewModelScope.launch {
+            hiddenRepo.hide(
+                HiddenThread(
+                    tid = thread.id,
+                    forumName = thread.simpleForum.second,
+                    title = thread.title,
+                    authorName = thread.author.name,
+                    hiddenTime = System.currentTimeMillis(),
+                )
+            )
+            _uiState.update { state ->
+                state.copy(data = state.data.map { if (it.id == thread.id) it.copy(hidden = true) else it })
+            }
+        }
+    }
+
+    fun unhideThread(thread: ThreadItem) {
+        viewModelScope.launch {
+            hiddenRepo.unhide(thread.id)
+            _uiState.update { state ->
+                state.copy(data = state.data.map { if (it.id == thread.id) it.copy(hidden = false) else it })
+            }
+        }
+    }
+
+    /**
+     * Called when navigating back from thread page.
+     *
+     * @param threadId target thread ID
+     * @param like latest like status
+     * */
+    fun onThreadResult(threadId: Long, like: Like) {
+         launchInVM {
+            // compare and update with latest like status
+            val newData = currentState.data.updateLikeStatus(threadId, like)
+            if (newData != null) {
+                _uiState.update { it.copy(data = newData) }
+                exploreRepo.updateCachedThreadLike(threadId, like, from = ExplorePageItem.Concern)
+            }
+            // else: empty or no status changes
+        }
+    }
+
+    companion object {
+        private const val TAG = "ConcernViewModel"
+
+        /**
+         * Update Like status of target [ThreadItem] in this list
+         *
+         * @param threadId id of target [ThreadItem]
+         * @param liked new like status
+         * @param loading is requesting like status update
+         *
+         * @return new thread list with like status updated
+         * */
+        suspend fun List<ThreadItem>.updateLikeStatus(
+            threadId: Long,
+            liked: Boolean,
+            loading: Boolean
+        ): List<ThreadItem> = withContext(Dispatchers.Default) {
+            fastMap {
+                if (it.id != threadId) return@fastMap it
+
+                it.copy(like = it.like.updateLikeStatus(liked).setLoading(loading))
+            }
+        }
+
+        /**
+         * Update Like status of target [ThreadItem] in this list
+         *
+         * @param threadId id of target [ThreadItem]
+         * @param like new like status
+         *
+         * @return new thread list with like status updated or **null** if no status changes
+         * */
+        suspend fun List<ThreadItem>.updateLikeStatus(threadId: Long, like: Like) = if (this.isNotEmpty()) {
+            withContext(Dispatchers.Default) {
+                var changed = false
+                fastMap {
+                    if (it.id == threadId) {
+                        // Unchanged, return null
+                        if (it.liked == like.liked && it.like.count == like.count) return@withContext null
+                        changed = true
+                        it.copy(like = like)
+                    } else {
+                        it
+                    }
+                }.takeIf { changed }
+            }
+        } else {
+            null
+        }
+
+        suspend fun updateLikeStatusUiStateCommon(
+            thread: ThreadItem,
+            onRequestLikeThread: suspend (ThreadItem) -> Unit,
+            onEvent: suspend (ThreadLikeUiEvent) -> Unit,
+            onUpdateThreadList: suspend (threadId: Long, liked: Boolean, loading: Boolean) -> Unit
+        ): Boolean = withContext(Dispatchers.Main) {
+            if (thread.like.loading) {
+                onEvent(ThreadLikeUiEvent.Connecting)
+                return@withContext false
+            }
+            val threadId = thread.id
+            val liked = !thread.liked
+
+            // set loading to true
+            onUpdateThreadList(threadId, liked, true)
+            // request like status update to server
+            runCatching {
+                onRequestLikeThread(thread)
+            }
+            .onFailure {
+                if (it is TiebaNotLoggedInException) {
+                    onEvent(ThreadLikeUiEvent.NotLoggedIn)
+                } else {
+                    onEvent(ThreadLikeUiEvent.Failed(e = it))
+                }
+                // revert like status changes on this ThreadItem, set loading to false
+                onUpdateThreadList(threadId, !liked, false)
+            }
+            .onSuccess {
+                // set loading to false
+                onUpdateThreadList(threadId, liked, false)
+            }
+            .isSuccess
+        }
+    }
+}

@@ -1,0 +1,183 @@
+package com.huanchengfly.tieba.post.ui.page.threadstore
+
+import androidx.compose.runtime.Immutable
+import androidx.compose.ui.util.fastFilter
+import androidx.compose.ui.util.fastMap
+import androidx.compose.ui.util.fastMapNotNull
+import android.content.Context
+import androidx.lifecycle.viewModelScope
+import com.huanchengfly.tieba.post.api.retrofit.exception.getErrorMessage
+import com.huanchengfly.tieba.post.arch.BaseStateViewModel
+import com.huanchengfly.tieba.post.arch.CommonUiEvent
+import com.huanchengfly.tieba.post.arch.TbLiteExceptionHandler
+import com.huanchengfly.tieba.post.arch.UiState
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequest
+import androidx.work.WorkManager
+import com.huanchengfly.tieba.post.R
+import com.huanchengfly.tieba.post.repository.ThreadStoreRepository
+import com.huanchengfly.tieba.post.ui.models.ThreadStore
+import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import javax.inject.Inject
+
+@Immutable
+data class ThreadStoreUiState(
+    val isRefreshing: Boolean = false,
+    val isLoadingMore: Boolean = false,
+    val hasMore: Boolean = true,
+    /** 下一页页码, 0 基([ThreadStoreRepository.load] 的 offset = pageSize * page), 首屏加载 page 0 */
+    val currentPage: Int = 0,
+    val data: List<ThreadStore> = emptyList(),
+    val error: Throwable? = null
+) : UiState {
+
+    val isEmpty: Boolean
+        get() = data.isEmpty()
+}
+
+@HiltViewModel
+class ThreadStoreViewModel @Inject constructor(
+    @ApplicationContext private val appContext: Context,
+    private val threadStoreRepo: ThreadStoreRepository
+) : BaseStateViewModel<ThreadStoreUiState>() {
+
+    override val errorHandler = TbLiteExceptionHandler(TAG) { context, e, suppressed ->
+        if (suppressed && !currentState.isEmpty) {
+            _uiState.update { it.copy(isRefreshing = false, isLoadingMore = false, error = null) }
+            sendUiEvent(CommonUiEvent.ToastError(e))
+        } else {
+            _uiState.update { it.copy(isRefreshing = false, isLoadingMore = false, error = e) }
+        }
+    }
+
+    init {
+        refreshInternal()
+    }
+
+    override fun createInitialState(): ThreadStoreUiState = ThreadStoreUiState()
+
+    /**
+     * 批量备份收藏：按队列逐个进行（WorkManager 链式串行），避免并发请求过多。
+     * 已删除的帖子跳过；已有备份的帖子走增量更新。
+     */
+    fun batchBackup(threads: List<ThreadStore>) {
+        val items = threads.filterNot { it.isDeleted }
+        if (items.isEmpty()) return
+        val workManager = WorkManager.getInstance(appContext)
+        val requests = items.map { LocalBackupWorkerRequest(it.id) }
+        val batchName = "local_backup_batch_" + System.currentTimeMillis()
+        var chain = workManager.beginUniqueWork(batchName, ExistingWorkPolicy.KEEP, requests.first())
+        requests.drop(1).forEach { chain = chain.then(it) }
+        chain.enqueue()
+        sendUiEvent(
+            CommonUiEvent.Toast(appContext.getString(R.string.batch_backup_queued, items.size))
+        )
+    }
+
+    private fun LocalBackupWorkerRequest(threadId: Long): OneTimeWorkRequest =
+        com.huanchengfly.tieba.post.workers.LocalBackupWorker.buildRequest(threadId)
+
+    /**
+     * 收藏列表滚动位置, 用于从帖子页返回时恢复 (不进 UiState, 仅页面重组恢复用)。
+     * 刷新重置数据时归零。
+     */
+    var listRestoreIndex: Int = 0
+        private set
+
+    var listRestoreOffset: Int = 0
+        private set
+
+    fun saveListPosition(index: Int, offset: Int) {
+        listRestoreIndex = index
+        listRestoreOffset = offset
+    }
+
+    private fun refreshInternal(): Unit = launchInVM {
+        _uiState.update { ThreadStoreUiState(isRefreshing = true) }
+        val data = threadStoreRepo.load()
+        // 数据被重置, 滚动位置记忆一并作废(页面重建后从顶部开始)
+        listRestoreIndex = 0
+        listRestoreOffset = 0
+        _uiState.update {
+            ThreadStoreUiState(currentPage = 0, data = data, hasMore = data.hasMore)
+        }
+    }
+
+    fun onRefresh() {
+        if (currentState.isRefreshing) return else refreshInternal()
+    }
+
+    fun onLoadMore() {
+        val oldState = currentState
+        if (oldState.isLoadingMore || !oldState.hasMore) {
+            return
+        } else {
+            _uiState.update { oldState.copy(isLoadingMore = true) }
+        }
+        launchInVM {
+            val nextPage = oldState.currentPage + 1
+            val data = threadStoreRepo.load(page = nextPage)
+            if (data.isEmpty()) {
+                _uiState.update { it.copy(isLoadingMore = false, hasMore = false) }
+            } else {
+                val newData = withContext(Dispatchers.Default) { oldState.data + data }
+                _uiState.update {
+                    ThreadStoreUiState(currentPage = nextPage, data = newData, hasMore = data.hasMore)
+                }
+            }
+        }
+    }
+
+    fun onDelete(thread: ThreadStore) {
+        viewModelScope.launch {
+            val oldThreads = currentState.data
+            val newThreads = withContext(Dispatchers.Default) {
+                oldThreads.fastFilter { it.id != thread.id }
+            }
+            _uiState.update { it.copy(data = newThreads) }
+
+            threadStoreRepo.remove(thread)
+                .onFailure { e ->
+                    emitUiEvent(ThreadStoreUiEvent.Delete.Failure(e.getErrorMessage()))
+                    // Revert changes now
+                    _uiState.update { it.copy(data = oldThreads) }
+                }
+                .onSuccess { emitUiEvent(ThreadStoreUiEvent.Delete.Success) }
+        }
+    }
+
+    fun onThreadResult(threadId: Long, markedPostId: Long?) = launchInVM {
+        val newData = withContext(Dispatchers.Default) {
+            if (markedPostId != null) {
+                // Update
+                currentState.data.fastMap {
+                    when {
+                        // No changes, return null list
+                        it.id == threadId && it.markPid == markedPostId -> return@withContext null
+                        it.id == threadId -> it.copy(markPid = markedPostId)
+                        else -> it
+                    }
+                }
+            } else {
+                // Filter out
+                currentState.data.fastMapNotNull { if (it.id != threadId) it else null }
+            }
+        }
+        if (newData != null) {
+            _uiState.update { it.copy(data = newData) }
+        }
+    }
+
+    companion object {
+
+        private const val TAG = "ThreadStoreViewModel"
+
+        private val List<ThreadStore>.hasMore: Boolean
+            get() = this.size == ThreadStoreRepository.LOAD_LIMIT // Result reached limit
+    }
+}

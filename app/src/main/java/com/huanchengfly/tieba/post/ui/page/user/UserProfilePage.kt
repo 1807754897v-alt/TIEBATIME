@@ -1,0 +1,1247 @@
+package com.huanchengfly.tieba.post.ui.page.user
+
+import android.content.Context
+import androidx.annotation.StringRes
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.TextAutoSize
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Block
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.rounded.Verified
+import androidx.compose.material.icons.rounded.Warning
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.ProvideTextStyle
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarColors
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.TopAppBarScrollBehavior
+import androidx.compose.material3.VerticalDivider
+import androidx.compose.material3.minimumInteractiveComponentSize
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.NonRestartableComposable
+import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.movableContentOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Devices
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.util.fastForEachIndexed
+import androidx.compose.ui.util.lerp
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavController
+import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.request.transformations
+import com.airbnb.lottie.compose.LottieAnimation
+import com.airbnb.lottie.compose.LottieCompositionSpec
+import com.airbnb.lottie.compose.LottieConstants
+import com.airbnb.lottie.compose.rememberLottieComposition
+import com.huanchengfly.tieba.post.R
+import com.huanchengfly.tieba.post.arch.CommonUiEvent
+import com.huanchengfly.tieba.post.arch.collectUiEventWithLifecycle
+import com.huanchengfly.tieba.post.components.coil.BlurTransformation
+import com.huanchengfly.tieba.post.components.imageProcessor.ImageProcessor
+import com.huanchengfly.tieba.post.goToActivity
+import com.huanchengfly.tieba.post.models.database.UserProfile
+import com.huanchengfly.tieba.post.theme.FloatProducer
+import com.huanchengfly.tieba.post.theme.TiebaLiteTheme
+import com.huanchengfly.tieba.post.ui.common.LocalAnimatedVisibilityScope
+import com.huanchengfly.tieba.post.ui.common.LocalSharedTransitionScope
+import com.huanchengfly.tieba.post.ui.common.animateEnterExit
+import com.huanchengfly.tieba.post.ui.common.theme.compose.block
+import com.huanchengfly.tieba.post.ui.common.theme.compose.clickableNoIndication
+import com.huanchengfly.tieba.post.ui.common.theme.compose.onCase
+import com.huanchengfly.tieba.post.ui.common.theme.compose.onNotNull
+import com.huanchengfly.tieba.post.ui.common.windowsizeclass.isLooseWindowWidth
+import com.huanchengfly.tieba.post.ui.common.windowsizeclass.isWindowHeightCompact
+import com.huanchengfly.tieba.post.ui.common.windowsizeclass.isWindowWidthCompact
+import com.huanchengfly.tieba.post.ui.models.user.PermissionList
+import com.huanchengfly.tieba.post.ui.page.Destination
+import com.huanchengfly.tieba.post.ui.page.ProvideNavigator
+import com.huanchengfly.tieba.post.ui.page.photoview.PhotoViewActivity
+import com.huanchengfly.tieba.post.ui.page.user.edit.EditProfileActivity
+import com.huanchengfly.tieba.post.ui.page.user.likeforum.UserLikeForumPage
+import com.huanchengfly.tieba.post.ui.page.user.post.UserPostPage
+import com.huanchengfly.tieba.post.ui.page.user.thread.UserThreadPage
+import com.huanchengfly.tieba.post.ui.widgets.compose.AlertDialog
+import com.huanchengfly.tieba.post.ui.widgets.compose.Avatar
+import com.huanchengfly.tieba.post.ui.widgets.compose.BackNavigationIcon
+import com.huanchengfly.tieba.post.ui.widgets.compose.Chip
+import com.huanchengfly.tieba.post.ui.widgets.compose.ClickMenu
+import com.huanchengfly.tieba.post.ui.widgets.compose.CollapsingAvatarTopAppBar
+import com.huanchengfly.tieba.post.ui.widgets.compose.DialogNegativeButton
+import com.huanchengfly.tieba.post.ui.widgets.compose.DialogState
+import com.huanchengfly.tieba.post.ui.widgets.compose.FancyAnimatedIndicatorWithModifier
+import com.huanchengfly.tieba.post.ui.widgets.compose.MoreMenuItem
+import com.huanchengfly.tieba.post.ui.widgets.compose.MyScaffold
+import com.huanchengfly.tieba.post.ui.widgets.compose.PositiveButton
+import com.huanchengfly.tieba.post.ui.widgets.compose.Switch
+import com.huanchengfly.tieba.post.ui.widgets.compose.TipScreen
+import com.huanchengfly.tieba.post.ui.widgets.compose.dialogs.AnyPopDialogProperties
+import com.huanchengfly.tieba.post.ui.widgets.compose.dialogs.DirectionState
+import com.huanchengfly.tieba.post.ui.widgets.compose.placeholder
+import com.huanchengfly.tieba.post.ui.widgets.compose.preference.SegmentedPreference
+import com.huanchengfly.tieba.post.ui.widgets.compose.rememberDialogState
+import com.huanchengfly.tieba.post.ui.widgets.compose.rememberPagerListStates
+import com.huanchengfly.tieba.post.ui.widgets.compose.rememberSnackbarHostState
+import com.huanchengfly.tieba.post.ui.widgets.compose.states.DefaultLoadingScreen
+import com.huanchengfly.tieba.post.ui.widgets.compose.states.StateScreen
+import com.huanchengfly.tieba.post.ui.widgets.compose.states.StateScreenScope
+import com.huanchengfly.tieba.post.utils.ColorUtils
+import com.huanchengfly.tieba.post.utils.LocalAccount
+import com.huanchengfly.tieba.post.utils.StringUtil
+import com.huanchengfly.tieba.post.utils.StringUtil.getShortNumString
+import com.huanchengfly.tieba.post.utils.TiebaUtil
+import kotlinx.coroutines.launch
+import kotlin.math.abs
+
+private enum class Tab(val titleRes: Int) {
+    THREADS(R.string.title_profile_threads),
+
+    POSTS(R.string.title_profile_posts),
+
+    FORUMS(R.string.title_profile_forums);
+
+    fun formatTitle(number: Int, context: Context): String {
+        return context.getString(titleRes, if (number > 0) number.getShortNumString() else " ")
+    }
+}
+
+private typealias TabWithTitle = Pair<Tab, String>
+
+/** The default size of an avatar in [UserProfileDetail] */
+private val AvatarLandscapeSize: Dp
+    @Composable @ReadOnlyComposable get() = if (isWindowHeightCompact()) 96.dp else 144.dp
+
+/** The default expanded size of an avatar in [UserProfileTopAppBar] */
+private val AvatarExpandedSize: Dp
+    @Composable @ReadOnlyComposable get() = if (isWindowWidthCompact()) 96.dp else 128.dp
+
+/** The default expanded height of a [UserProfileTopAppBar] */
+private val UserAppbarExpandHeight: Dp
+    @Composable @ReadOnlyComposable get() = 160.dp + AvatarExpandedSize
+
+/** Whether to use landscape layout or not */
+private val ContentLandscapeLayout: Boolean
+    @Composable @ReadOnlyComposable get() = isLooseWindowWidth()
+
+// Blurry avatar background
+@Composable
+private fun AvatarBackground(
+    imgProcessor: ImageProcessor,
+    avatar: String,
+    collapseFraction: FloatProducer
+) {
+    val color = MaterialTheme.colorScheme.background
+    val collapsedAlpha = remember(color) {
+        if (ColorUtils.isColorLight(color.toArgb())) 0.76f else 0.92f
+    }
+
+    AsyncImage(
+        model = ImageRequest.Builder(LocalContext.current)
+            .data(avatar)
+            .transformations(BlurTransformation(imgProcessor, 32f))
+            .build(),
+        contentDescription = null,
+        modifier = Modifier
+            .fillMaxSize()
+            .drawWithCache {
+                onDrawWithContent {
+                    drawContent()
+                    // draw surface mask with alpha, this is better than change alpha directly
+                    drawRect(
+                        color = color.copy(lerp(collapsedAlpha, 1f, collapseFraction()))
+                    )
+                }
+            },
+        contentScale = ContentScale.Crop,
+    )
+}
+
+/**
+ * Creates a transparent [TopAppBarColors] for displaying [AvatarBackground].
+ * */
+@Composable
+private fun rememberAvatarTopBarColors(): TopAppBarColors {
+    val defaultColors = TopAppBarDefaults.topAppBarColors()
+    return remember(defaultColors) {
+        defaultColors.copy(
+            containerColor = defaultColors.containerColor.copy(0.01f), // Nearly transparent
+            scrolledContainerColor = defaultColors.containerColor.copy(0.01f)
+        )
+    }
+}
+
+@Composable
+fun UserProfilePage(
+    uid: Long,
+    avatar: String?,
+    nickname: String?,
+    username: String?,
+    transitionKey: String?,
+    navigator: NavController,
+    viewModel: UserProfileViewModel = hiltViewModel(),
+) {
+    val context = LocalContext.current
+    val onBack: () -> Unit = navigator::navigateUp
+    val snackbarHostState = rememberSnackbarHostState()
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val collapseFraction = FloatProducer { scrollBehavior.state.collapsedFraction }
+
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
+    viewModel.uiEvent.collectUiEventWithLifecycle {
+        val uiMessage = when (it) {
+            is UserProfileUiEvent.FollowSuccess -> it.message
+
+            is UserProfileUiEvent.FollowFailed -> getString(R.string.toast_like_failed, it.message)
+
+            is UserProfileUiEvent.UnfollowFailed -> getString(R.string.toast_unlike_failed, it.message)
+
+            is UserProfileUiEvent.PermissionListException -> getString(R.string.toast_ban_interact_failed, it.message)
+
+            is CommonUiEvent.Toast -> it.message.toString()
+
+            else -> Unit
+        }
+        if (uiMessage is String) {
+            snackbarHostState.currentSnackbarData?.dismiss()
+            snackbarHostState.showSnackbar(uiMessage)
+        }
+    }
+
+    // Compose fullscreen avatar background when possible
+    val avatarUrl = avatar ?: uiState.userProfile?.let { remember { StringUtil.getAvatarUrl(it.portrait) } }
+    var backgroundColor = MaterialTheme.colorScheme.background
+    if (!avatarUrl.isNullOrEmpty()) {
+        AvatarBackground(viewModel.imageProcessor, avatar = avatarUrl, collapseFraction)
+        backgroundColor = Color.Transparent
+    }
+
+    StateScreen(
+        isLoading = uiState.isRefreshing || uiState.userProfile == null,
+        error = uiState.error,
+        onReload = viewModel::onRefresh,
+        loadingScreen = {
+            LoadingScreen(Modifier, uid, avatar, nickname, username, transitionKey, onBack)
+        }
+    ) {
+        val userProfile = uiState.userProfile ?: return@StateScreen
+        val account = LocalAccount.current
+        val isSelf = account?.uid == uid
+        val blockState by viewModel.blockState.collectAsStateWithLifecycle()
+        val onAppealClicked: (() -> Unit)? = {
+            navigator.navigate(Destination.WebView("https://c.tieba.baidu.com/mo/q/userappeal"))
+        }.takeIf { isSelf }
+        val onNavigateFollowList: () -> Unit = {
+            navigator.navigate(Destination.UserFollowList(uid))
+        }
+
+        val permList = uiState.permList
+        val permissionDialogState = rememberDialogState()
+        if (permissionDialogState.show && permList != null) {
+            PermissionSettingDialog(
+                dialogState = permissionDialogState,
+                initialPermissionList = permList,
+                isLoading = uiState.isLoadingPermList,
+                onConfirm = { updatedBean ->
+                    viewModel.setUserBlack(updatedBean)
+                        .invokeOnCompletion { permissionDialogState.show = false }
+                }
+            )
+        }
+
+        val tabs: List<TabWithTitle> = remember {
+            Tab.entries.mapNotNull {
+                when(it) {
+                    Tab.THREADS -> it to it.formatTitle(userProfile.thread, context)
+
+                    Tab.POSTS -> (it to it.formatTitle(userProfile.post, context)).takeIf { isSelf }
+
+                    Tab.FORUMS -> it to it.formatTitle(userProfile.forum, context)
+                }
+            }
+        }
+
+        val pagerState = rememberPagerState { tabs.size }
+        val lazyListStates = rememberPagerListStates(tabs.size)
+        val pagerContents = remember(tabs.size) {
+            tabs.mapIndexed { i, (tab, _) ->
+                movableContentOf<Boolean> { fluid ->
+                    val lazyListState = lazyListStates[i]
+                    when (tab) {
+                        Tab.THREADS -> UserThreadPage(uid, fluid, lazyListState)
+
+                        Tab.POSTS -> UserPostPage(uid, fluid, lazyListState)
+
+                        Tab.FORUMS -> when {
+                            !isSelf && userProfile.privateForum -> UserPageHide(hiddenTab = tab)
+
+                            userProfile.forum == 0 -> UserPageEmpty()
+
+                            else -> UserLikeForumPage(uid, fluid, lazyListState)
+                        }
+                    }
+                }
+            }
+        }
+
+        val movablePager = remember {
+            movableContentOf<Modifier, Boolean> { modifier, fluid ->
+                Column {
+                    UserProfileTabRow(tabs, pagerState, collapseFraction)
+
+                    HorizontalPager(pagerState, Modifier.fillMaxSize() then modifier, key = { it }) {
+                        ProvideNavigator(navigator) {
+                            pagerContents[it](fluid)
+                        }
+                    }
+                }
+            }
+        }
+
+        val contentLandscapeLayout = ContentLandscapeLayout
+        MyScaffold(
+            topBar = {
+                UserProfileTopAppBar(
+                    transitionKey = transitionKey,
+                    profile = userProfile,
+                    isSelf = account?.uid == userProfile.uid,
+                    isFollowing = userProfile.following,
+                    isRequestingFollow = uiState.isRequestingFollow,
+                    onActionClicked = {
+                        when {
+                            isSelf -> context.goToActivity<EditProfileActivity>()
+
+                            userProfile.following -> viewModel.onUnFollowClicked()
+
+                            else -> viewModel.onFollowClicked()
+                        }
+                    }.takeUnless { uiState.isRefreshing || account == null },
+                    onRefreshClicked = viewModel::onRefresh,
+                    block = blockState,
+                    onBlackListClicked = viewModel::onUserBlacklisted,
+                    onWhiteListClicked = viewModel::onUserWhitelisted,
+                    onNavigateFollowList = onNavigateFollowList,
+                    onSetUserBlack = if (permList != null) permissionDialogState::show else null,
+                    onBack = onBack,
+                    scrollBehavior = scrollBehavior,
+                ) {
+                    UserIntro(
+                        modifier = Modifier.padding(start = 16.dp),
+                        profile = userProfile,
+                        landscape = contentLandscapeLayout,
+                        onAppealClicked = onAppealClicked,
+                    )
+                }
+            },
+            snackbarHostState = snackbarHostState,
+            backgroundColor = backgroundColor,
+        ) { paddingValues ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+            ) {
+                if (contentLandscapeLayout) {
+                    Row {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .fillMaxWidth(0.35f)
+                                .verticalScroll(rememberScrollState())
+                                .padding(start = 16.dp, bottom = 16.dp)
+                        ) {
+                            UserProfileDetail(
+                                profile = userProfile,
+                                block = blockState,
+                                transitionKey = transitionKey,
+                                landscape = true,
+                                onNavigateFollowList = onNavigateFollowList,
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            UserIntro(profile = userProfile, landscape = true, onAppealClicked = onAppealClicked)
+                        }
+
+                        movablePager(Modifier.weight(1.0f), true/* fluid */)
+                    }
+                } else {
+                    movablePager(
+                        Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+                        false // fluid
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun UserProfileTopAppBar(
+    modifier: Modifier = Modifier,
+    transitionKey: String? = null,
+    profile: UserProfile,
+    block: UserBlockState,
+    isSelf: Boolean = false,
+    isFollowing: Boolean = false,
+    isRequestingFollow: Boolean = false,
+    onActionClicked: (() -> Unit)? = null,
+    onRefreshClicked: () -> Unit = {},
+    onBlackListClicked: () -> Unit = {},
+    onWhiteListClicked: () -> Unit = {},
+    onNavigateFollowList: () -> Unit = {},
+    onSetUserBlack: (() -> Unit)? = null,
+    onBack: () -> Unit = {},
+    scrollBehavior: TopAppBarScrollBehavior,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val actionsMenu: @Composable RowScope.() -> Unit = {
+        if (isRequestingFollow) {
+            CircularProgressIndicator(
+                modifier = Modifier.minimumInteractiveComponentSize(),
+                strokeWidth = 2.5.dp
+            )
+        } else if (onActionClicked != null) {
+            TextButton(onClick = onActionClicked) {
+                Text(
+                    text = when {
+                        isSelf -> stringResource(id = R.string.menu_edit_info)
+                        isFollowing -> stringResource(id = R.string.button_unfollow)
+                        else -> stringResource(id = R.string.button_follow)
+                    }
+                )
+            }
+        }
+
+        ClickMenu(
+            menuContent = {
+                TextMenuItem(
+                    text = R.string.btn_refresh,
+                    onClick = onRefreshClicked
+                )
+                if (!isSelf) {
+                    val isInBlackList = block == UserBlockState.Blacklisted
+                    val isInWhiteList = block == UserBlockState.Whitelisted
+                    TextMenuItem (
+                        text = if (isInBlackList) R.string.title_remove_black else R.string.title_add_black,
+                        onClick = onBlackListClicked
+                    )
+                    TextMenuItem(
+                        text = if (isInWhiteList) R.string.title_remove_white else R.string.title_add_white,
+                        onClick = onWhiteListClicked
+                    )
+                    if (onSetUserBlack != null) {
+                        TextMenuItem(text = R.string.menu_ban_user, onClick = onSetUserBlack)
+                    }
+                }
+            },
+            triggerShape = CircleShape,
+            content = MoreMenuItem,
+        )
+    }
+
+    val navIcon = remember {
+        movableContentOf { AnimatedBackButton(onBackPressed = onBack) }
+    }
+
+    if (!ContentLandscapeLayout) {
+        val titleModifier = Modifier.padding(start = 2.dp)
+        CollapsingAvatarTopAppBar(
+            modifier = modifier,
+            avatar = {
+                UserAvatar(
+                    modifier = Modifier.matchParentSize(),
+                    avatar = remember { StringUtil.getBigAvatarUrl(profile.portrait) },
+                    uid = profile.uid,
+                    transitionKey = transitionKey
+                )
+            },
+            title = {
+                val nickname = profile.nickname ?: profile.name
+                Nickname(modifier = titleModifier, nickname, transitionKey, block)
+            },
+            subtitle = {
+                UserProfileDetail(titleModifier, profile, block, transitionKey, landscape = false, onNavigateFollowList)
+            },
+            navigationIcon = navIcon,
+            actions = actionsMenu,
+            expandedHeight = UserAppbarExpandHeight,
+            avatarMax = AvatarExpandedSize,
+            colors = rememberAvatarTopBarColors(),
+            scrollBehavior = scrollBehavior,
+            collapsibleExtraContent = true,
+            content = content
+        )
+    } else {
+        TopAppBar(
+            modifier = modifier,
+            title = {},
+            navigationIcon = navIcon,
+            actions = actionsMenu,
+            colors = rememberAvatarTopBarColors(),
+        )
+    }
+}
+
+@Composable
+private fun UserProfileTabRow(
+    tabs: List<TabWithTitle>,
+    pagerState: PagerState,
+    collapseFraction: FloatProducer,
+    modifier: Modifier = Modifier,
+) {
+    val coroutineScope = rememberCoroutineScope()
+    val colorScheme = MaterialTheme.colorScheme
+
+    PrimaryTabRow(
+        selectedTabIndex = pagerState.currentPage,
+        modifier = modifier,
+        indicator = {
+            FancyAnimatedIndicatorWithModifier(pagerState.currentPage)
+        },
+        containerColor = Color.Transparent,
+        contentColor = colorScheme.primary,
+        divider = { // visible when collapsed
+            HorizontalDivider(modifier = Modifier.graphicsLayer { alpha = collapseFraction() })
+        },
+    ) {
+        tabs.fastForEachIndexed { i, (_, title) ->
+            Tab(
+                selected = pagerState.currentPage == i,
+                onClick = {
+                    coroutineScope.launch {
+                        if (abs(pagerState.currentPage - i) > 1) {
+                            pagerState.scrollToPage(i)
+                        } else {
+                            pagerState.animateScrollToPage(i)
+                        }
+                    }
+                },
+                text = { Text(text = title) },
+                unselectedContentColor = colorScheme.onSurface
+            )
+        }
+    }
+}
+
+@Composable
+private fun UserAvatar(modifier: Modifier = Modifier, avatar: String?, uid: Long, transitionKey: String?) {
+    if (avatar.isNullOrEmpty()) {
+        Box(modifier = modifier.placeholder(shape = CircleShape))
+    } else {
+        val context = LocalContext.current
+        Avatar(
+            modifier = modifier
+                .clickableNoIndication {
+                    PhotoViewActivity.launchSinglePhoto(context, url = avatar)
+                }
+                .onNotNull(avatar) { sharedUserAvatar(uid = uid, extraKey = transitionKey) },
+            data = avatar
+        )
+    }
+}
+
+@Composable
+private fun AnimatedBackButton(modifier: Modifier = Modifier, onBackPressed: () -> Unit) {
+    BackNavigationIcon(
+        modifier = modifier.animateEnterExit(
+            zIndexInOverlay = 0f,
+            animatedVisibilityScope = LocalAnimatedVisibilityScope.current,
+            sharedTransitionScope = LocalSharedTransitionScope.current,
+            enter = fadeIn(),
+            exit = fadeOut(
+                animationSpec = tween(durationMillis = 150)
+            ) + slideOutHorizontally { -it }
+        ),
+        onBackPressed = onBackPressed
+    )
+}
+
+@NonRestartableComposable
+@Composable
+private fun NameText(
+    modifier: Modifier = Modifier,
+    name: String,
+    block: UserBlockState = UserBlockState.None,
+    style: TextStyle = LocalTextStyle.current
+) {
+    Text(
+        text = name,
+        modifier = modifier,
+        color = MaterialTheme.colorScheme.onSurface,
+        autoSize = TextAutoSize.StepBased(minFontSize = 14.sp, maxFontSize = style.fontSize),
+        maxLines = 1,
+        overflow = TextOverflow.MiddleEllipsis,
+        textDecoration = TextDecoration.LineThrough.takeIf { block == UserBlockState.Blacklisted },
+        style = style
+    )
+}
+
+@Composable
+private fun Nickname(
+    modifier: Modifier = Modifier,
+    nickname: String?,
+    transitionKey: String? = null,
+    block: UserBlockState = UserBlockState.None
+) {
+    NameText(
+        modifier = modifier.block {
+            if (nickname.isNullOrEmpty()) {
+                placeholder()
+            } else {
+                sharedUserNickname(nickname = nickname, extraKey = transitionKey)
+            }
+        },
+        name = nickname ?: stringResource(R.string.app_name),
+        block = block,
+    )
+}
+
+@Composable
+private fun Username(
+    modifier: Modifier = Modifier,
+    username: String,
+    transitionKey: String? = null,
+    block: UserBlockState = UserBlockState.None,
+) {
+    NameText(
+        modifier = modifier.sharedUsername(username, extraKey = transitionKey),
+        name = remember { "(${username})" },
+        block = block,
+        style = MaterialTheme.typography.titleMedium
+    )
+}
+
+@Composable
+private fun StatText(modifier: Modifier = Modifier, title: String, num: String) {
+    Column (
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(text = title, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+        Text(text = num, color = LocalContentColor.current, fontWeight = FontWeight.Bold)
+    }
+}
+
+/**
+ * 显示吧主认证, 大神认证
+ * */
+@Composable
+private fun VerifiedText(modifier: Modifier = Modifier, verify: String) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        val tintColor = MaterialTheme.colorScheme.primary
+        Icon(
+            imageVector = Icons.Rounded.Verified,
+            contentDescription = null,
+            modifier = Modifier.size(16.dp),
+            tint = tintColor,
+        )
+        Text(
+            text = verify,
+            style = MaterialTheme.typography.bodyMedium,
+            color = tintColor
+        )
+    }
+}
+
+@Composable
+private fun UserProfileDetail(
+    modifier: Modifier = Modifier,
+    profile: UserProfile,
+    block: UserBlockState = UserBlockState.None,
+    transitionKey: String? = null,
+    landscape: Boolean,
+    onNavigateFollowList: () -> Unit = {},
+) {
+    val isWindowHeightCompact = isWindowHeightCompact()
+    val context = LocalContext.current
+
+    val userStats = remember {
+        listOf(
+            R.string.text_stat_follow to profile.follow.getShortNumString(), // 关注
+            R.string.text_stat_fans to profile.fans.getShortNumString(),     // 粉丝
+            R.string.text_stat_agrees to profile.agree.getShortNumString(),  // 赞
+            R.string.text_stat_tbage to context.getString(R.string.text_profile_tb_age, profile.tbAge), // 吧龄
+        )
+    }
+
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(
+            space = 8.dp,
+            alignment = if (isWindowHeightCompact) Alignment.Top else Alignment.CenterVertically
+        ),
+    ) {
+        if (landscape) {
+            UserAvatar(
+                modifier = Modifier
+                    .size(AvatarLandscapeSize)
+                    .align(Alignment.CenterHorizontally),
+                avatar = remember { StringUtil.getBigAvatarUrl(profile.portrait) },
+                uid = profile.uid,
+                transitionKey = transitionKey,
+            )
+        }
+
+        Column(
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalAlignment = if (landscape) Alignment.CenterHorizontally else Alignment.Start
+        ) {
+            if (landscape) {
+                val nickname = profile.nickname ?: profile.name
+                Nickname(nickname = nickname, transitionKey = transitionKey, block = block)
+            }
+
+            if (profile.nickname != null && profile.name.isNotEmpty()) {
+                Username(username = profile.name, transitionKey = transitionKey, block = block)
+            }
+
+            ProvideTextStyle(MaterialTheme.typography.bodyMedium) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(
+                        space = 8.dp,
+                        alignment = if (landscape) Alignment.CenterHorizontally else Alignment.Start
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(IntrinsicSize.Min)
+                        .clipToBounds()
+                        .horizontalScroll(rememberScrollState())
+                ) {
+                    userStats.fastForEachIndexed { i, (titleRes, number) ->
+                        StatText(
+                            modifier = Modifier.onCase(titleRes == R.string.text_stat_follow) {
+                                clickable(onClick = onNavigateFollowList)
+                            },
+                            title = stringResource(id = titleRes),
+                            num = number,
+                        )
+                        if (i != userStats.lastIndex) {
+                            VerticalDivider()
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun UserAccountBlockedTip(
+    modifier: Modifier = Modifier,
+    days: Int,
+    onAppealClicked: (() -> Unit)? = null
+) {
+    ProvideTextStyle(MaterialTheme.typography.bodyMedium) {
+        Row(
+            modifier = modifier,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Warning,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = Color.Red,
+            )
+            Text(
+                text = if (days < 36500) {
+                    stringResource(R.string.profile_account_blocked, days)
+                } else {
+                    stringResource(R.string.profile_account_blocked_forever)
+                },
+                modifier = Modifier.padding(horizontal = 8.dp),
+                maxLines = 1,
+                color = MaterialTheme.colorScheme.error,
+            )
+            if (onAppealClicked != null) {
+                Text(
+                    text = "申诉",
+                    modifier = Modifier.clickableNoIndication(onClick = onAppealClicked),
+                    textDecoration = TextDecoration.Underline,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun UserIntro(
+    modifier: Modifier = Modifier,
+    profile: UserProfile,
+    landscape: Boolean,
+    onAppealClicked: (() -> Unit)? = null,
+) {
+    val context = LocalContext.current
+    val flowArrangement = Arrangement.spacedBy(6.dp)
+
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        if (profile.blockDays > 0) {
+            UserAccountBlockedTip(days = profile.blockDays, onAppealClicked = onAppealClicked)
+        }
+
+        Text(
+            text = profile.intro ?: stringResource(id = R.string.tip_no_intro),
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = if (landscape) Int.MAX_VALUE else 3,
+            overflow = TextOverflow.Ellipsis
+        )
+
+        FlowRow (
+            horizontalArrangement = flowArrangement,
+            verticalArrangement = flowArrangement
+        ) {
+            profile.bazuDesc?.let {
+                VerifiedText(verify = it)
+            }
+
+            profile.newGod?.let {
+                VerifiedText(verify = stringResource(id = R.string.text_god_verify, it))
+            }
+
+            if (profile.isOfficial) {
+                VerifiedText(verify = stringResource(id = R.string.text_official_account))
+            }
+        }
+
+        FlowRow(
+            horizontalArrangement = flowArrangement,
+            verticalArrangement = flowArrangement
+        ) {
+            Chip(text = profile.sex, invertColor = true)
+            Chip(
+                text = stringResource(id = R.string.text_profile_user_id, profile.tiebaUid),
+                appendIcon = {
+                    Icon(
+                        imageVector = Icons.Outlined.ContentCopy,
+                        contentDescription = stringResource(R.string.menu_copy)
+                    )
+                },
+                onClick = { TiebaUtil.copyText(context, profile.tiebaUid) }
+            )
+            profile.address?.let {
+                Chip(text = stringResource(id = R.string.text_profile_ip_location, it))
+            }
+        }
+    }
+}
+
+@Composable
+private fun UserProfileDetailPlaceholder(
+    modifier: Modifier = Modifier,
+    uid: Long,
+    avatar: String? = null,
+    nickname: String? = null,
+    username: String? = null,
+    transitionKey: String? = null,
+    landscape: Boolean = false
+) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(
+            space = 8.dp,
+            alignment = if (isWindowHeightCompact()) Alignment.Top else Alignment.CenterVertically
+        ),
+        horizontalAlignment = if (landscape) Alignment.CenterHorizontally else Alignment.Start
+    ) {
+        if (landscape) {
+            UserAvatar(modifier = Modifier.size(AvatarLandscapeSize), avatar, uid, transitionKey)
+        }
+
+        Column(
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalAlignment = if (landscape) Alignment.CenterHorizontally else Alignment.Start
+        ) {
+            if (landscape) {
+                Nickname(nickname = nickname, transitionKey = transitionKey)
+            }
+
+            if (!username.isNullOrEmpty()) {
+                Username(username = username, transitionKey = transitionKey)
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(IntrinsicSize.Min),
+                horizontalArrangement = Arrangement.spacedBy(
+                    space = 8.dp,
+                    alignment = if (landscape) Alignment.CenterHorizontally else Alignment.Start
+                ),
+            ) {
+                repeat(4) {
+                    Box(modifier = Modifier.size(width = 28.dp, height = 40.dp).placeholder())
+                    if (it < 3) {
+                        VerticalDivider()
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StateScreenScope.LoadingScreen(
+    modifier: Modifier = Modifier,
+    uid: Long = -1,
+    avatar: String? = null,
+    nickname: String? = null,
+    username: String? = null,
+    transitionKey: String? = null,
+    onBack: () -> Unit = {},
+) {
+    val landscapeLayout = ContentLandscapeLayout
+    val navIcon = remember {
+        movableContentOf { BackNavigationIcon(onBackPressed = onBack) }
+    }
+    val loadingLottieContent = remember {
+        movableContentOf<Modifier> {
+            Box(modifier = it, contentAlignment = Alignment.Center) {
+                DefaultLoadingScreen()
+            }
+        }
+    }
+    val introPlaceholderContent = remember {
+        movableContentOf<Modifier> {
+            Column(modifier = it) {
+                Text(
+                    text = stringResource(id = R.string.tip_no_intro),
+                    modifier = Modifier.placeholder(),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                // Sex, ID, IP
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Box(modifier = Modifier.size(38.dp, 24.dp).placeholder(shape = CircleShape))
+                    Box(modifier = Modifier.size(140.dp, 24.dp).placeholder(shape = CircleShape))
+                    Box(modifier = Modifier.size(86.dp, 24.dp).placeholder(shape = CircleShape))
+                }
+            }
+        }
+    }
+
+    Column(
+        modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
+    ) {
+        if (!landscapeLayout) {
+            val titleModifier = Modifier.padding(start = 2.dp)
+            CollapsingAvatarTopAppBar(
+                avatar = {
+                    UserAvatar(Modifier.matchParentSize(), avatar, uid, transitionKey)
+                },
+                title = {
+                    Nickname(titleModifier, nickname, transitionKey)
+                },
+                subtitle = {
+                    UserProfileDetailPlaceholder(titleModifier, uid, avatar, nickname, username, transitionKey)
+                },
+                navigationIcon = navIcon,
+                expandedHeight = UserAppbarExpandHeight,
+                avatarMax = AvatarExpandedSize,
+                colors = rememberAvatarTopBarColors(),
+                collapsibleExtraContent = true
+            ) {
+                introPlaceholderContent(Modifier.padding(start = 16.dp))
+            }
+        } else {
+            TopAppBar(title = {}, navigationIcon = navIcon, colors = rememberAvatarTopBarColors())
+        }
+
+        if (landscapeLayout) {
+            Row {
+                Column(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth(0.35f)
+                        .verticalScroll(rememberScrollState())
+                        .padding(start = 16.dp, bottom = 16.dp)
+                ) {
+                    UserProfileDetailPlaceholder(
+                        uid = uid,
+                        avatar = avatar,
+                        nickname = nickname,
+                        username = username,
+                        transitionKey = transitionKey,
+                        landscape = true
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    introPlaceholderContent(Modifier)
+                }
+
+                loadingLottieContent(Modifier.fillMaxSize())
+            }
+        } else {
+            loadingLottieContent(Modifier.fillMaxSize())
+        }
+    }
+}
+
+@Composable
+private fun UserPageHide(hiddenTab: Tab) {
+    val context = LocalContext.current
+    TipScreen(
+        title = {
+            val hiddenText = remember {
+                context.getString(R.string.profile_title_hidden, hiddenTab.formatTitle(0, context))
+            }
+            Text(text = hiddenText)
+        },
+        modifier = Modifier.fillMaxSize(),
+        image = {
+            val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.lottie_hide))
+            LottieAnimation(
+                composition = composition,
+                iterations = LottieConstants.IterateForever,
+                modifier = Modifier
+                    .padding(vertical = 16.dp)
+                    .fillMaxWidth()
+                    .aspectRatio(2.5f)
+            )
+        },
+    )
+}
+
+@Composable
+private fun UserPageEmpty() {
+    TipScreen(
+        title = { Text(text = stringResource(id = R.string.title_empty)) },
+        modifier = Modifier.fillMaxSize(),
+        image = {
+            val composition by rememberLottieComposition(
+                LottieCompositionSpec.RawRes(R.raw.lottie_empty_box)
+            )
+            LottieAnimation(
+                composition = composition,
+                iterations = LottieConstants.IterateForever,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(2.0f)
+            )
+        },
+    )
+}
+
+@Composable
+fun SwitchPreference(
+    modifier: Modifier = Modifier,
+    checked: Boolean,
+    @StringRes title: Int,
+    @StringRes summary: Int? = null,
+    leadingIcon: ImageVector? = null,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    SegmentedPreference(
+        modifier = modifier,
+        title = title,
+        onClick = {
+            onCheckedChange(!checked)
+        },
+        leadingIcon = leadingIcon,
+        trailingContent = {
+            Switch(
+                checked = checked,
+                enabled = checked,
+                onCheckedChange = null,
+                interactionSource = interactionSource,
+            )
+        },
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+        summary = summary,
+        interactionSource = interactionSource,
+    )
+}
+
+@Composable
+private fun PermissionSettingDialog(
+    modifier: Modifier = Modifier,
+    dialogState: DialogState,
+    initialPermissionList: PermissionList,
+    isLoading: Boolean,
+    onConfirm: (PermissionList) -> Unit
+) {
+    // 维护对话框内部的临时状态
+    var current by remember { mutableStateOf(initialPermissionList.copy()) }
+
+    AlertDialog(
+        modifier = modifier,
+        dialogState = dialogState,
+        dialogProperties = AnyPopDialogProperties(
+            direction = DirectionState.CENTER,
+            dismissOnBackPress = !isLoading, // 强控用户直到请求完成
+            dismissOnClickOutside = !isLoading,
+        ),
+        title = {
+            val titleRes = if (isLoading) R.string.dialog_ban_requesting else R.string.dialog_ban
+            Text(text = stringResource(titleRes))
+        },
+        content = {
+            if (isLoading) {
+                CircularProgressIndicator(modifier = Modifier.padding(16.dp))
+                Text(stringResource(id = R.string.dialog_content_wait))
+            }
+
+            AnimatedVisibility(
+                visible = !isLoading,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically(),
+            ) {
+                Column {
+                    // 1. 禁止关注
+                    SwitchPreference(
+                        checked = current.follow,
+                        title = R.string.ban_follow,
+                        leadingIcon = Icons.Outlined.Block,
+                        onCheckedChange = { current = current.copy(follow = it) }
+                    )
+                    // 2. 禁止互动
+                    SwitchPreference(
+                        checked = current.interact,
+                        title = R.string.ban_interact,
+                        summary = R.string.ban_interact_summary,
+                        leadingIcon = Icons.Outlined.Block,
+                        onCheckedChange = { current = current.copy(interact = it) }
+                    )
+                    // 3. 禁止私信
+                    SwitchPreference(
+                        checked = current.chat,
+                        title = R.string.ban_chat,
+                        leadingIcon = Icons.Outlined.Block,
+                        onCheckedChange = { current = current.copy(chat = it) }
+                    )
+                }
+            }
+        },
+        buttons = {
+            if (isLoading) return@AlertDialog
+
+            DialogNegativeButton(text = stringResource(R.string.button_cancel))
+
+            PositiveButton(
+                text = stringResource(R.string.button_sure),
+                enabled = current != initialPermissionList,
+                onClick = { onConfirm(current) }
+            )
+        },
+    )
+}
+
+
+@Preview("UserProfileDetail", showBackground = true, backgroundColor = 0xFFFFFFFF)
+@Composable
+private fun UserProfileDetailPreview() = TiebaLiteTheme {
+    UserProfileDetail(
+        modifier = Modifier.padding(16.dp),
+        profile = UserProfile(
+            uid = -1,
+            name = "我是0812",
+            nickname = "我是谁",
+            tbAge = "12.4",
+            address = "第二经济开发区",
+            bazuDesc = "吃瓜吧吧主",
+            newGod = "吃瓜"
+        ),
+        landscape = false
+    )
+}
+
+@Preview("LoadingScreen")
+@Composable
+private fun LoadingScreenPreview() = TiebaLiteTheme {
+    Surface {
+        with(StateScreenScope()) {
+            LoadingScreen(nickname = "我是谁", username = "user(123)")
+        }
+    }
+}
+
+@Preview("LoadingScreenLandscape", device = Devices.PIXEL_TABLET)
+@Composable
+private fun LoadingScreenLandscapePreview() = TiebaLiteTheme {
+    Surface {
+        with(StateScreenScope()) {
+            LoadingScreen(nickname = "我是谁", username = "user(123)")
+        }
+    }
+}

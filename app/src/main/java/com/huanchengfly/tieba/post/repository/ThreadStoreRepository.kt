@@ -1,0 +1,102 @@
+package com.huanchengfly.tieba.post.repository
+
+import com.huanchengfly.tieba.post.api.models.ThreadStoreBean.ThreadStoreInfo
+import com.huanchengfly.tieba.post.api.retrofit.exception.TiebaNotLoggedInException
+import com.huanchengfly.tieba.post.models.database.FavoriteThread
+import com.huanchengfly.tieba.post.models.database.dao.FavoriteThreadDao
+import com.huanchengfly.tieba.post.repository.source.network.ThreadStoreNetworkDataSource
+import com.huanchengfly.tieba.post.repository.user.SettingsRepository
+import com.huanchengfly.tieba.post.ui.models.Author
+import com.huanchengfly.tieba.post.ui.models.ThreadStore
+import com.huanchengfly.tieba.post.utils.AccountUtil
+import com.huanchengfly.tieba.post.utils.StringUtil
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
+import okhttp3.internal.toLongOrDefault
+import javax.inject.Inject
+import javax.inject.Singleton
+
+/**
+ * Repository that manages user thread collection
+ * */
+@Singleton
+class ThreadStoreRepository @Inject constructor(
+    private val settingsRepository: SettingsRepository,
+    private val favoriteThreadDao: FavoriteThreadDao,
+) {
+
+    private val networkDataSource = ThreadStoreNetworkDataSource
+
+    private suspend fun requireTBS(): String {
+        return AccountUtil.getInstance().currentAccount.first()?.tbs ?: throw TiebaNotLoggedInException()
+    }
+
+    /**
+     * 加载收藏的帖子
+     * */
+    suspend fun load(page: Int = 0, limit: Int = LOAD_LIMIT): List<ThreadStore> {
+        val data = networkDataSource.load(page, limit)
+        val showBothName = settingsRepository.habitSettings.snapshot().showBothName
+        val result = data.mapUiModel(showBothName)
+        // Sync the local favorites snapshot for offline image cache preservation
+        runCatching {
+            favoriteThreadDao.upsertAll(result.map { FavoriteThread(it.id, System.currentTimeMillis()) })
+        }
+        return result
+    }
+
+    suspend fun add(threadId: Long, postId: Long) = runCatching {
+        networkDataSource.add(threadId, postId)
+        favoriteThreadDao.upsertAll(listOf(FavoriteThread(threadId, System.currentTimeMillis())))
+    }
+
+    /**
+     * 取消收藏这个帖子
+     * */
+    suspend fun remove(thread: ThreadStore) = runCatching {
+        networkDataSource.remove(threadId = thread.id, tbs = requireTBS())
+        favoriteThreadDao.deleteById(thread.id)
+    }
+
+    /**
+     * 取消收藏这个帖子
+     * */
+    suspend fun remove(threadId: Long, forumId: Long?, tbs: String?) {
+        networkDataSource.remove(threadId, forumId, tbs = tbs ?: requireTBS())
+        favoriteThreadDao.deleteById(threadId)
+    }
+
+    companion object {
+
+        const val LOAD_LIMIT = 20
+
+        private suspend fun List<ThreadStoreInfo>.mapUiModel(showBothName: Boolean): List<ThreadStore> {
+            return if (isNotEmpty()) {
+                withContext(Dispatchers.Default) {
+                    map {
+                        ThreadStore(
+                            id = it.threadId,
+                            title = it.title,
+                            forumName = it.forumName,
+                            isDeleted = it.isDeleted == 1,
+                            maxPid = it.maxPid.toLongOrDefault(0),
+                            markPid = it.markPid.toLongOrDefault(0),
+                            postNo = it.postNo,
+                            count = it.count,
+                            author = it.author.run {
+                                Author(
+                                    id = requireNotNull(lzUid) { "Null author id of thread: ${it.threadId}" },
+                                    name = StringUtil.getUserNameString(showBothName, name ?: "", nameShow),
+                                    avatarUrl = StringUtil.getAvatarUrl(userPortrait)
+                                )
+                            }
+                        )
+                    }
+                }
+            } else {
+                emptyList()
+            }
+        }
+    }
+}

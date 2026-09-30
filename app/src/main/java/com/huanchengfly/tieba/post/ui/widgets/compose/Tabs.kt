@@ -1,0 +1,254 @@
+package com.huanchengfly.tieba.post.ui.widgets.compose
+
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationVector1D
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.VectorConverter
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ArrowDropDown
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabIndicatorScope
+import androidx.compose.material3.TabPosition
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.Measurable
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.flow.filterIsInstance
+import kotlinx.coroutines.launch
+
+private val DEFAULT_INDICATOR_HEIGHT = 3.dp
+
+/**
+ * From androidx.compose.material3.samples.FancyAnimatedIndicatorWithModifier
+ *
+ * 0Ranko0P changes:
+ *   1. border indicator to line indicator
+ *   2. remove color animation
+ * */
+@Composable
+fun TabIndicatorScope.FancyAnimatedIndicatorWithModifier(
+    index: Int,
+    scrollable: Boolean = false,
+    indicatorColor: Color = MaterialTheme.colorScheme.primary,
+) {
+    var startAnimatable by remember { mutableStateOf<Animatable<Dp, AnimationVector1D>?>(null) }
+    var endAnimatable by remember { mutableStateOf<Animatable<Dp, AnimationVector1D>?>(null) }
+    val coroutineScope = rememberCoroutineScope()
+
+    Box(
+        Modifier
+            .tabIndicatorLayout { measurable: Measurable,
+                                  constraints: Constraints,
+                                  tabPositions: List<TabPosition> ->
+                val newStart = tabPositions[index].left
+                val newEnd = newStart + tabPositions[index].contentWidth
+
+                val startAnim =
+                    startAnimatable
+                        ?: Animatable(newStart, Dp.VectorConverter).also { startAnimatable = it }
+
+                val endAnim =
+                    endAnimatable
+                        ?: Animatable(newEnd, Dp.VectorConverter).also { endAnimatable = it }
+
+                if (endAnim.targetValue != newEnd) {
+                    coroutineScope.launch {
+                        endAnim.animateTo(
+                            newEnd,
+                            animationSpec =
+                                if (endAnim.value < newEnd) {
+                                    spring(stiffness = Spring.StiffnessMedium)
+                                } else {
+                                    spring(stiffness = Spring.StiffnessVeryLow)
+                                }
+                        )
+                    }
+                }
+
+                if (startAnim.targetValue != newStart) {
+                    coroutineScope.launch {
+                        startAnim.animateTo(
+                            newStart,
+                            animationSpec =
+                                // Handle directionality here, if we are moving to the right, we
+                                // want the right side of the indicator to move faster, if we are
+                                // moving to the left, we want the left side to move faster.
+                                if (startAnim.value < newStart) {
+                                    spring(stiffness = Spring.StiffnessVeryLow)
+                                } else {
+                                    spring(stiffness = Spring.StiffnessMedium)
+                                }
+                        )
+                    }
+                }
+
+                val indicatorEnd = endAnim.value.roundToPx()
+                val indicatorStart = startAnim.value.roundToPx()
+
+                val indicatorWidth = indicatorEnd - indicatorStart
+                val indicatorHeight = DEFAULT_INDICATOR_HEIGHT.roundToPx()
+                val horizontalPadding = if (scrollable) {
+                    0
+                } else {
+                    (tabPositions[index].width - tabPositions[index].contentWidth).times(0.5f).roundToPx()
+                }
+
+                // Apply an offset from the start to correctly position the indicator around the tab
+                val placeable =
+                    measurable.measure(
+                        Constraints.fixed(width = indicatorWidth, height = indicatorHeight)
+                    )
+                layout(constraints.maxWidth, constraints.maxHeight) {
+                    placeable.place(
+                        x = indicatorStart + horizontalPadding,
+                        y = constraints.maxHeight - indicatorHeight
+                    )
+                }
+            }
+            .fillMaxSize()
+            .drawWithContent {
+                val path = Path().apply {
+                    val cornerRadius = CornerRadius(size.height, size.height)
+                    addRoundRect(
+                        RoundRect(
+                            rect = Rect(offset = Offset.Zero, size),
+                            topLeft = cornerRadius,
+                            topRight = cornerRadius,
+                            bottomLeft = CornerRadius.Zero,
+                            bottomRight = CornerRadius.Zero
+                        )
+                    )
+                }
+                drawPath(path, indicatorColor)
+            }
+    )
+}
+
+@Composable
+fun TabClickMenu(
+    selected: Boolean,
+    onClick: () -> Unit,
+    menuContent: @Composable MenuScope.() -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    menuState: MenuState = rememberMenuState(),
+    selectedContentColor: Color = LocalContentColor.current,
+    unselectedContentColor: Color = selectedContentColor.copy(alpha = 0.7f),
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+
+    LaunchedEffect(interactionSource) {
+        interactionSource.interactions
+            .filterIsInstance<PressInteraction.Press>()
+            .collect {
+                menuState.offset = it.pressPosition
+            }
+    }
+
+    ClickMenu(
+        menuContent = menuContent,
+        menuState = menuState
+    ) {
+        Tab(
+            selected = selected,
+            onClick = {
+                if (!selected) {
+                    onClick()
+                } else {
+                    menuState.toggle()
+                }
+            },
+            modifier = modifier,
+            enabled = enabled,
+            interactionSource = interactionSource,
+            selectedContentColor = selectedContentColor,
+            unselectedContentColor = unselectedContentColor,
+            content = content
+        )
+    }
+}
+
+@Composable
+fun TabClickMenu(
+    selected: Boolean,
+    onClick: () -> Unit,
+    text: @Composable () -> Unit,
+    menuContent: @Composable MenuScope.() -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    menuState: MenuState = rememberMenuState(),
+    selectedContentColor: Color = LocalContentColor.current,
+    unselectedContentColor: Color = selectedContentColor.copy(alpha = 0.7f),
+) {
+    TabClickMenu(
+        selected = selected,
+        onClick = onClick,
+        menuContent = menuContent,
+        modifier = modifier,
+        enabled = enabled,
+        menuState = menuState,
+        selectedContentColor = selectedContentColor,
+        unselectedContentColor = unselectedContentColor,
+    ) {
+        val rotate by animateFloatAsState(
+            targetValue = if (menuState.expanded) 180f else 0f,
+            label = "ArrowIndicatorRotate"
+        )
+        val alpha by animateFloatAsState(
+            targetValue = if (selected) 1f else 0f,
+            label = "ArrowIndicatorAlpha"
+        )
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+            modifier = Modifier
+                .height(48.dp)
+                .padding(start = 16.dp)
+        ) {
+            text()
+
+            Icon(
+                imageVector = Icons.Rounded.ArrowDropDown,
+                contentDescription = null,
+                modifier = Modifier
+                    .graphicsLayer {
+                        this.rotationZ = rotate
+                        this.alpha = alpha
+                    }
+            )
+        }
+    }
+}

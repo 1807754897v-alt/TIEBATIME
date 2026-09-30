@@ -1,0 +1,95 @@
+package com.huanchengfly.tieba.post.ui.page.main
+
+import androidx.compose.animation.graphics.res.rememberAnimatedVectorPainter
+import androidx.compose.animation.graphics.res.animatedVectorResource
+import androidx.compose.animation.graphics.vector.AnimatedImageVector
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Icon
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import com.huanchengfly.tieba.post.LocalUISettings
+import com.huanchengfly.tieba.post.ui.models.settings.NavRailPosition
+import com.huanchengfly.tieba.post.ui.widgets.compose.AccountNavIcon
+import com.huanchengfly.tieba.post.ui.widgets.compose.Sizes
+import com.huanchengfly.tieba.post.utils.LocalAccount
+
+/** 应用级常驻侧栏的宽度, 同时用于内容区的左侧留白. */
+internal val AppLevelRailWidth = 80.dp
+
+/**
+ * 应用级常驻侧栏: 非紧凑窗口下跨所有根目的地显示, 点击可直接回到根 tab.
+ */
+@Composable
+fun AppLevelNavigationRail(
+    modifier: Modifier = Modifier,
+    onSelect: (MainDestination) -> Unit,
+    onLoginClick: () -> Unit,
+) {
+    val uiSettings = LocalUISettings.current
+    val loggedIn = LocalAccount.current != null
+    val mainNavState = LocalMainNavState.current
+    val destinations = listOfNotNull(
+        MainDestination.Home,
+        MainDestination.Explore.takeUnless { uiSettings.hideExplore },
+        MainDestination.Notification.takeIf { loggedIn && !uiSettings.hideNotifications },
+        MainDestination.User,
+    )
+
+    NavigationRail(modifier = modifier.fillMaxHeight()) {
+        val railPosition = uiSettings.appNavRailPosition
+        val navItems: @Composable ColumnScope.() -> Unit = {
+            destinations.forEach { destination ->
+                key(destination) {
+                    val selected = destination === mainNavState.currentTab
+                    NavigationRailItem(
+                        selected = selected,
+                        onClick = {
+                            onSelect(destination)
+                        },
+                        icon = {
+                            Icon(
+                                modifier = Modifier.size(Sizes.Tiny),
+                                painter = rememberAnimatedVectorPainter(
+                                    animatedImageVector = AnimatedImageVector.animatedVectorResource(destination.iconRes),
+                                    atEnd = selected,
+                                ),
+                                contentDescription = stringResource(destination.titleRes),
+                            )
+                        },
+                        label = { Text(stringResource(destination.titleRes)) },
+                    )
+                }
+            }
+        }
+        when (railPosition) {
+            NavRailPosition.TOP -> {
+                Spacer(modifier = Modifier.height(12.dp))
+                navItems()
+                Spacer(modifier = Modifier.weight(1f))
+            }
+
+            NavRailPosition.CENTER -> {
+                Spacer(modifier = Modifier.weight(1f))
+                navItems()
+                Spacer(modifier = Modifier.weight(1f))
+            }
+
+            NavRailPosition.BOTTOM -> {
+                Spacer(modifier = Modifier.weight(1f))
+                navItems()
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+        }
+        AccountNavIcon(onLoginClicked = onLoginClick)
+    }
+}

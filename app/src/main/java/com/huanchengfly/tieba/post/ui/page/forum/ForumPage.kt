@@ -1,0 +1,720 @@
+package com.huanchengfly.tieba.post.ui.page.forum
+
+import android.content.Context
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationConstants
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerDefaults
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.PostAdd
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.VerticalAlignTop
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.FabPosition
+import androidx.compose.material3.FloatingActionButtonMenu
+import androidx.compose.material3.FloatingActionButtonMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
+import androidx.compose.material3.ToggleFloatingActionButton
+import androidx.compose.material3.ToggleFloatingActionButtonDefaults.animateIcon
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.NonRestartableComposable
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.movableContentOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.vectorResource
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.util.fastForEach
+import androidx.compose.ui.util.lerp
+import androidx.core.util.getOrDefault
+import androidx.core.util.set
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavController
+import com.huanchengfly.tieba.post.LocalHabitSettings
+import com.huanchengfly.tieba.post.R
+import com.huanchengfly.tieba.post.api.models.protos.FrsTabInfo
+import com.huanchengfly.tieba.post.arch.GlobalEvent
+import com.huanchengfly.tieba.post.arch.collectCommonUiEventWithLifecycle
+import com.huanchengfly.tieba.post.arch.collectUiEventWithLifecycle
+import com.huanchengfly.tieba.post.arch.emitGlobalEvent
+import com.huanchengfly.tieba.post.arch.isOverlapping
+import com.huanchengfly.tieba.post.arch.isScrolling
+import com.huanchengfly.tieba.post.arch.onGlobalEvent
+import com.huanchengfly.tieba.post.navigateDebounced
+import com.huanchengfly.tieba.post.theme.FloatProducer
+import com.huanchengfly.tieba.post.theme.TiebaLiteTheme
+import com.huanchengfly.tieba.post.toastShort
+import com.huanchengfly.tieba.post.ui.ForumAvatarSharedBoundsKey
+import com.huanchengfly.tieba.post.ui.ForumTitleSharedBoundsKey
+import com.huanchengfly.tieba.post.ui.common.localSharedBounds
+import com.huanchengfly.tieba.post.ui.common.theme.compose.clickableNoIndication
+import com.huanchengfly.tieba.post.ui.common.windowsizeclass.isWindowHeightCompact
+import com.huanchengfly.tieba.post.ui.models.forum.ForumData
+import com.huanchengfly.tieba.post.ui.models.forum.GoodClassify
+import com.huanchengfly.tieba.post.ui.models.settings.ForumFAB
+import com.huanchengfly.tieba.post.ui.page.Destination
+import com.huanchengfly.tieba.post.ui.page.Destination.ForumDetail
+import com.huanchengfly.tieba.post.ui.page.Destination.ForumSearchPost
+import com.huanchengfly.tieba.post.ui.page.ProvideNavigator
+import com.huanchengfly.tieba.post.ui.page.forum.generaltablist.GeneralTabListPage
+import com.huanchengfly.tieba.post.ui.page.forum.generaltablist.GeneralTabListUiEvent
+import com.huanchengfly.tieba.post.ui.page.forum.threadlist.ForumThreadList
+import com.huanchengfly.tieba.post.ui.page.forum.threadlist.ForumThreadListUiEvent
+import com.huanchengfly.tieba.post.ui.page.forum.threadlist.ForumType
+import com.huanchengfly.tieba.post.ui.page.main.explore.createThreadClickListeners
+import com.huanchengfly.tieba.post.ui.page.photoview.PhotoViewActivity
+import com.huanchengfly.tieba.post.ui.page.thread.ThreadLikeUiEvent
+import com.huanchengfly.tieba.post.ui.utils.rememberScrollOrientationConnection
+import com.huanchengfly.tieba.post.ui.utils.backToTopFabPosition
+import com.huanchengfly.tieba.post.ui.widgets.compose.ActionItem
+import com.huanchengfly.tieba.post.ui.widgets.compose.Avatar
+import com.huanchengfly.tieba.post.ui.widgets.compose.BackNavigationIcon
+import com.huanchengfly.tieba.post.ui.widgets.compose.BlurScaffold
+import com.huanchengfly.tieba.post.ui.widgets.compose.Chip
+import com.huanchengfly.tieba.post.ui.widgets.compose.ClickMenu
+import com.huanchengfly.tieba.post.ui.widgets.compose.CollapsingAvatarTopAppBar
+import com.huanchengfly.tieba.post.ui.widgets.compose.ConfirmDialog
+import com.huanchengfly.tieba.post.ui.widgets.compose.Container
+import com.huanchengfly.tieba.post.ui.widgets.compose.DefaultToggleFloatingActionButton
+import com.huanchengfly.tieba.post.ui.widgets.compose.FeedCardPlaceholder
+import com.huanchengfly.tieba.post.ui.widgets.compose.LinearProgressIndicator
+import com.huanchengfly.tieba.post.ui.widgets.compose.MenuScope
+import com.huanchengfly.tieba.post.ui.widgets.compose.MoreMenuItem
+import com.huanchengfly.tieba.post.ui.widgets.compose.OutlinedIconTextButton
+import com.huanchengfly.tieba.post.ui.widgets.compose.SwipeToDismissSnackbarHost
+import com.huanchengfly.tieba.post.ui.widgets.compose.placeholder
+import com.huanchengfly.tieba.post.ui.widgets.compose.rememberDialogState
+import com.huanchengfly.tieba.post.ui.widgets.compose.rememberPagerListStates
+import com.huanchengfly.tieba.post.ui.widgets.compose.rememberSnackbarHostState
+import com.huanchengfly.tieba.post.ui.widgets.compose.scrollToTop
+import com.huanchengfly.tieba.post.ui.widgets.compose.states.StateScreen
+import com.huanchengfly.tieba.post.utils.LocalAccount
+import kotlinx.collections.immutable.persistentListOf
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.milliseconds
+
+/** The default expanded height of a Forum TopAppBar */
+private val ForumAppbarExpandHeight: Dp = 144.dp
+
+/** The default subtitle enter transition of a Forum TopAppBar */
+private val TopBarSubtitleEnterTransition: EnterTransition =
+    fadeIn(animationSpec = tween(delayMillis = 50)) + expandVertically(animationSpec = tween(delayMillis = 50))
+
+/** The default subtitle exit transition of a Forum TopAppBar */
+private val TopBarSubtitleExitTransition: ExitTransition
+    get() = ExitTransition.None
+
+/** DefaultTabs(Latest, Good) + NavTab */
+private fun Context.buildForumTabs(navTabInfo: List<FrsTabInfo>?): List<FrsTabInfo> {
+    val defaultTabs = listOf(
+        FrsTabInfo(tabId = TAB_FORUM_LATEST, tabName = getString(R.string.tab_forum_latest)),
+        FrsTabInfo(tabId = TAB_FORUM_GOOD, tabName = getString(R.string.tab_forum_good)),
+    )
+    return if (navTabInfo.isNullOrEmpty()) defaultTabs else defaultTabs + navTabInfo
+}
+
+@Composable
+private fun ForumAvatar(
+    modifier: Modifier = Modifier,
+    avatar: String?,
+    forum: String,
+    transitionKey: String?
+) {
+    if (avatar.isNullOrEmpty()) {
+        Box(modifier = modifier.placeholder(shape = CircleShape))
+    } else {
+        val context = LocalContext.current
+        Avatar(
+            data = avatar,
+            modifier = modifier
+                .clickable {
+                    PhotoViewActivity.launchSinglePhoto(context, url = avatar)
+                }
+                .localSharedBounds(ForumAvatarSharedBoundsKey(forum, transitionKey)),
+        )
+    }
+}
+
+@Composable
+fun ForumPage(
+    forumName: String,
+    avatarUrl: String?,
+    transitionKey: String?,
+    navigator: NavController,
+    viewModel: ForumViewModel = hiltViewModel(),
+    onOpenThread: ((Destination.Thread) -> Unit)? = null,
+) {
+    val context = LocalContext.current
+    val fabPosition = backToTopFabPosition()
+    val loggedIn = LocalAccount.current != null
+    val coroutineScope = rememberCoroutineScope()
+    val snackbarHostState = rememberSnackbarHostState()
+    val onShowSnackbarShort: (CharSequence) -> Unit = {
+        coroutineScope.launch {
+            snackbarHostState.currentSnackbarData?.dismiss()
+            snackbarHostState.showSnackbar(message = it.toString())
+        }
+    }
+
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val forumData = uiState.forum
+    val forumTabs: List<FrsTabInfo> by remember {
+        derivedStateOf { context.buildForumTabs(uiState.forum?.navTabInfo) }
+    }
+    val forumSortTypes = viewModel.forumSortTypes
+    val defaultSortType = LocalHabitSettings.current.forumSortType
+
+    val pagerState = rememberPagerState { forumTabs.size }
+    val listStates by rememberUpdatedState(rememberPagerListStates(pagerState.pageCount))
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val scrollOrientationConnection = rememberScrollOrientationConnection()
+
+    viewModel.uiEvent.collectUiEventWithLifecycle {
+        val message = when (it) {
+            is ForumUiEvent.AddThread -> when {
+                !loggedIn -> toastShort(R.string.title_not_logged_in)
+
+                it.forumId != null -> navigator.navigateDebounced(
+                    route = Destination.Reply(forumId = it.forumId, forumName, threadId = 0L)
+                )
+
+                else -> getString(R.string.toast_add_thread_failed)
+            }
+
+            is ForumUiEvent.SignIn.Success -> {
+                getString(R.string.toast_sign_success, it.signBonusPoint, it.userSignRank)
+            }
+
+            is ForumUiEvent.SignIn.Failure -> getString(R.string.toast_sign_failed, it.errorMsg)
+
+            is ForumUiEvent.Like.Success -> getString(R.string.toast_like_success, it.memberSum)
+
+            is ForumUiEvent.Like.Failure -> getString(R.string.toast_like_failed, it.errorMsg)
+
+            is ForumUiEvent.Dislike.Success -> getString(R.string.toast_unlike_success)
+
+            is ForumUiEvent.Dislike.Failure -> getString(R.string.toast_unlike_failed, it.errorMsg)
+
+            is ForumUiEvent.PinShortcut.Success -> getString(R.string.toast_send_to_desktop_success)
+
+            is ForumUiEvent.PinShortcut.Failure -> getString(R.string.toast_send_to_desktop_failed, it.errorMsg)
+
+            is ForumUiEvent.ScrollToTop -> {
+                val index = forumTabs.indexOfFirst { tab -> tab.tabId == it.tabId}
+                listStates.getOrNull(index)?.scrollToTop(scrollBehavior)
+            }
+
+            else -> it.toString()
+        }
+        if (message is String) {
+            onShowSnackbarShort(message)
+        }
+    }
+
+    viewModel.uiEvent.collectCommonUiEventWithLifecycle(
+        onToast = onShowSnackbarShort,
+        onNavigateUp = navigator::navigateUp
+    )
+
+    onGlobalEvent<ThreadLikeUiEvent>(coroutineScope) {
+        onShowSnackbarShort(it.toMessage(context))
+    }
+
+    val unlikeDialogState = rememberDialogState()
+    if (unlikeDialogState.show) {
+        ConfirmDialog(
+            dialogState = unlikeDialogState,
+            onConfirm = viewModel::onDislikeForum,
+            title = {
+                Text(text = stringResource(R.string.title_dialog_unfollow_forum, forumName))
+            }
+        )
+    }
+
+    val threadClickListeners = remember(navigator, onOpenThread) {
+        createThreadClickListeners(
+            onNavigate = navigator::navigateDebounced,
+            onOpenThread = onOpenThread,
+        )
+    }
+    val forumThreadPages = remember(threadClickListeners) {
+        ForumType.entries.map { forumType ->
+            movableContentOf<PaddingValues, ForumData, Int> { contentPadding, forum, initialSortType ->
+                ForumThreadList(
+                    threadClickListeners = threadClickListeners,
+                    forumId = forum.id,
+                    forumName = forum.name,
+                    forumRuleTitle = forum.forumRuleTitle.takeUnless { forumType == ForumType.Good },
+                    type = forumType,
+                    contentPadding = contentPadding,
+                    initialSortType = initialSortType,
+                    listState = listStates[forumType.ordinal]
+                )
+            }
+        }
+    }
+
+    onGlobalEvent<GlobalEvent.AddThreadSuccess>(coroutineScope) {
+        val tabId = forumTabs[pagerState.currentPage].tabId
+        val event = if (tabId == TAB_FORUM_LATEST || tabId == TAB_FORUM_GOOD) {
+            ForumThreadListUiEvent.Refresh(isGood = tabId == TAB_FORUM_GOOD)
+        } else {
+            GeneralTabListUiEvent.Refresh(tabId = tabId)
+        }
+        coroutineScope.emitGlobalEvent(event)
+    }
+
+    var fabMenuExpanded by rememberSaveable { mutableStateOf(false) }
+    val onFabExpandChanged: (Boolean) -> Unit = {
+        fabMenuExpanded = it
+    }
+
+    BlurScaffold(
+        topHazeBlock = {
+            blurEnabled = (listStates[pagerState.currentPage].canScrollBackward ||
+                    scrollBehavior.isOverlapping) && uiState.error == null
+        },
+        topBar = {
+            val onTitleClicked: () -> Unit = { navigator.navigateDebounced(ForumDetail(forumName)) }
+
+            CollapsingAvatarTopAppBar(
+                avatar = {
+                    ForumAvatar(
+                        modifier = Modifier.matchParentSize(),
+                        avatar = forumData?.avatar ?: avatarUrl,
+                        forum = forumName,
+                        transitionKey = transitionKey
+                    )
+                },
+                title = {
+                    Text(
+                        text = stringResource(id = R.string.title_forum, forumName),
+                        modifier = Modifier
+                            .localSharedBounds(ForumTitleSharedBoundsKey(forumName, transitionKey))
+                            .clickableNoIndication(enabled = forumData != null, onClick = onTitleClicked),
+                        maxLines = 1,
+                        overflow = TextOverflow.MiddleEllipsis,
+                    )
+                },
+                subtitle = {
+                    AnimatedVisibility(
+                        visible = forumData != null,
+                        modifier = Modifier.clickableNoIndication(onClick = onTitleClicked),
+                        enter = TopBarSubtitleEnterTransition,
+                        exit = TopBarSubtitleExitTransition
+                    ) {
+                        forumData?.let { ForumSubtitle(forum = it) }
+                    }
+                },
+                navigationIcon = {
+                    BackNavigationIcon(onBackPressed = navigator::navigateUp)
+                },
+                actions = {
+                    if (forumData == null) return@CollapsingAvatarTopAppBar // Loading
+
+                    val forumSignFollowVisibility by remember {
+                        derivedStateOf { scrollBehavior.state.collapsedFraction < SignActionVisibilityThreshold }
+                    }
+                    if (loggedIn && forumSignFollowVisibility) {
+                        ForumSignFollowActionButton(
+                            forum = forumData,
+                            onFollow = viewModel::onLikeForum,
+                            onSignIn = viewModel::onSignIn,
+                            collapsedFraction = { scrollBehavior.state.collapsedFraction }
+                        )
+                    }
+
+                    ActionItem(
+                        icon = Icons.Rounded.Search,
+                        contentDescription = R.string.btn_search_in_forum,
+                        onClick = { navigator.navigateDebounced(ForumSearchPost(forumName, forumData.id)) }
+                    )
+
+                    ClickMenu(
+                        menuContent = {
+                            TextMenuItem(text = R.string.title_share, onClick = viewModel::shareForum)
+
+                            TextMenuItem(text = R.string.title_send_to_desktop) {
+                                viewModel.sendToDesktop(context.getString(R.string.title_forum, forumData.name))
+                            }
+
+                            if (loggedIn && forumData.liked) {
+                                TextMenuItem(text = R.string.button_unfollow, onClick = unlikeDialogState::show)
+                            }
+
+                            if (loggedIn && !forumSignFollowVisibility) {
+                                ForumSignFollowMenuItem(forumData, viewModel::onLikeForum, viewModel::onSignIn)
+                            }
+                        },
+                        triggerShape = CircleShape,
+                        content = MoreMenuItem,
+                    )
+                },
+                expandedHeight = ForumAppbarExpandHeight,
+                colors = TiebaLiteTheme.topAppBarColors,
+                scrollBehavior = scrollBehavior,
+            )  {
+                ForumTab(
+                    modifier = Modifier.fillMaxWidth(),
+                    pagerState = pagerState,
+                    tabs = forumTabs,
+                    sortTypes = forumSortTypes,
+                    onSortTypeChanged = { newSortType ->
+                        val currentTabId = forumTabs[pagerState.currentPage].tabId
+                        viewModel.onSortTypeChanged(currentTabId, newSortType)
+                        forumSortTypes[currentTabId] = newSortType
+                    },
+                )
+
+                val classifyVisible by remember { derivedStateOf { pagerState.currentPage == TAB_FORUM_GOOD } }
+                val goodClassifies = uiState.forum?.goodClassifies ?: return@CollapsingAvatarTopAppBar
+                // Compose classify inside TopBar for background blur
+                AnimatedVisibility(visible = classifyVisible) {
+                    ClassifyTabs(
+                        goodClassifies = goodClassifies,
+                        selectedItem = uiState.goodClassifyId,
+                        onSelected = viewModel::onGoodClassifyChanged
+                    )
+                }
+            }
+        },
+        snackbarHostState = snackbarHostState,
+        snackbarHost = { SwipeToDismissSnackbarHost(snackbarHostState) },
+        floatingActionButtonPosition = fabPosition,
+        floatingActionButton = {
+            if (forumData == null) return@BlurScaffold
+            // FAB visibility: no error, scrolling forward, pager is not scrolling
+            val fabVisible by remember {
+                derivedStateOf {
+                    uiState.error == null && scrollOrientationConnection.isScrollingForward && !pagerState.isScrolling
+                }
+            }
+
+            ForumFAB(
+                position = fabPosition,
+                expanded = fabMenuExpanded,
+                onExpandChanged = onFabExpandChanged,
+                visible = fabVisible,
+                quickRefresh = LocalHabitSettings.current.forumFabQuickRefresh,
+                onQuickRefresh = {
+                    forumTabs.getOrNull(pagerState.currentPage)?.tabId?.let { tabId ->
+                        viewModel.onRefreshClicked(tabId, hapticFeedback = true)
+                    }
+                },
+            ) { fab ->
+                val currentPage = pagerState.currentPage
+                val currentTabId = forumTabs.getOrNull(currentPage)?.tabId ?: return@ForumFAB
+                viewModel.onFabClicked(fab, currentTabId)
+            }
+        }
+    ) { contentPadding ->
+        StateScreen(
+            modifier = Modifier
+                .fillMaxSize()
+                .nestedScroll(connection = scrollOrientationConnection)
+                .nestedScroll(connection = scrollBehavior.nestedScrollConnection),
+            isLoading = forumData == null,
+            error = uiState.error,
+            loadingScreen = {
+                ForumThreadsPlaceholder(threadCount = if (isWindowHeightCompact()) 4 else 8)
+            },
+            screenPadding = contentPadding
+        ) {
+            if (forumData == null) return@StateScreen
+
+            ProvideNavigator(navigator = navigator) {
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.fillMaxSize(),
+                    flingBehavior = PagerDefaults.flingBehavior(pagerState, snapPositionalThreshold = 0.75f),
+                    key = { it },
+                    verticalAlignment = Alignment.Top,
+                ) { page ->
+                    val currentTab = forumTabs[page]
+                    val initialSortType = forumSortTypes.getOrDefault(key = currentTab.tabId, defaultSortType)
+                    when (currentTab.tabId) {
+                        TAB_FORUM_LATEST, TAB_FORUM_GOOD -> {
+                            forumThreadPages[page](contentPadding, forumData, initialSortType)
+                        }
+                        else -> {
+                            GeneralTabListPage(
+                                forumId = forumData.id,
+                                forumName = forumName,
+                                initialSortType = initialSortType,
+                                navTabInfo = currentTab,
+                                threadClickListeners = threadClickListeners,
+                                contentPadding = contentPadding,
+                                listState = listStates[page],
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        if (fabMenuExpanded) {
+            Spacer(modifier = Modifier.fillMaxSize().clickableNoIndication { onFabExpandChanged(false) })
+        }
+    }
+}
+
+private const val SignActionVisibilityThreshold = 0.1f // 10% Collapsing
+
+@Composable
+private fun ForumSignFollowActionButton(
+    modifier: Modifier = Modifier,
+    forum: ForumData,
+    onFollow: () -> Unit,
+    onSignIn: () -> Unit,
+    collapsedFraction: FloatProducer,
+) {
+    OutlinedIconTextButton (
+        onClick = if (forum.liked) onSignIn else onFollow,
+        modifier = modifier.graphicsLayer {
+            alpha = lerp(1f, 0f, collapsedFraction() * (1 / SignActionVisibilityThreshold))
+        },
+        enabled = !forum.signed || !forum.liked,
+        vectorIcon = when {
+            !forum.liked -> ImageVector.vectorResource(id = R.drawable.ic_favorite)
+            forum.signed -> null
+            else -> ImageVector.vectorResource(id = R.drawable.ic_oksign)
+        },
+        text = when {
+            !forum.liked -> stringResource(R.string.button_follow)
+            forum.signed -> stringResource(R.string.button_signed_in, forum.signedDays)
+            else -> stringResource(R.string.button_sign_in)
+        },
+        border = ButtonDefaults.outlinedButtonBorder(enabled = true),
+    )
+}
+
+/** Menu item version of [ForumSignFollowActionButton] */
+@NonRestartableComposable
+@Composable
+private fun MenuScope.ForumSignFollowMenuItem(forum: ForumData, onFollow: () -> Unit, onSignIn: () -> Unit) {
+    if (forum.liked && forum.signed) return // No thing to do
+
+    TextMenuItem(
+        text = stringResource(if (!forum.liked) R.string.button_follow else R.string.button_sign_in),
+        onClick = if (forum.liked) onSignIn else onFollow,
+    )
+}
+
+@Composable
+private fun ForumSubtitle(modifier: Modifier = Modifier, forum: ForumData) {
+    Column(modifier = modifier) {
+        AnimatedVisibility(
+            visible = forum.liked,
+            modifier = Modifier.fillMaxWidth(),
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically(),
+        ) {
+            val progressAnimatable = remember { Animatable(forum.levelProgress) }
+
+            Column(
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                LinearProgressIndicator(
+                    progress = { progressAnimatable.value },
+                    modifier = Modifier
+                        .height(6.dp)
+                        .fillMaxWidth(0.75f)
+                        .clip(CircleShape),
+                )
+                Text(
+                    text = stringResource(R.string.tip_forum_header_liked, forum.level, forum.levelName),
+                )
+            }
+
+            if (forum.signed) {
+                LaunchedEffect(Unit) {
+                    if (forum.levelProgress != progressAnimatable.targetValue) { // Skip signed forum
+                        progressAnimatable.snapTo(0f)
+                        delay(AnimationConstants.DefaultDurationMillis.milliseconds)
+                        progressAnimatable.animateTo(forum.levelProgress, spring(stiffness = Spring.StiffnessLow))
+                    }
+                }
+            }
+        }
+
+        if (!forum.liked && !forum.slogan.isNullOrEmpty()) {
+            Text(text = forum.slogan, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+@Composable
+private fun ForumFAB(
+    modifier: Modifier = Modifier,
+    expanded: Boolean,
+    position: FabPosition,
+    onExpandChanged: (Boolean) -> Unit,
+    visible: Boolean,
+    quickRefresh: Boolean,
+    onQuickRefresh: () -> Unit,
+    onClick: (Int) -> Unit
+) {
+    val context = LocalContext.current
+
+    val items = remember {
+        persistentListOf(
+            Triple(ForumFAB.POST, Icons.Rounded.PostAdd, context.getString(R.string.btn_post)),
+            Triple(ForumFAB.REFRESH, Icons.Rounded.Refresh, context.getString(R.string.btn_refresh)),
+            Triple(ForumFAB.BACK_TO_TOP, Icons.Rounded.VerticalAlignTop, context.getString(R.string.btn_back_to_top)),
+        )
+    }
+
+    // Anchor both the menu and the toggle animation to the same edge as the scaffold.
+    val horizontalAlignment = if (position == FabPosition.Start) Alignment.Start else Alignment.End
+    val buttonAlignment = if (position == FabPosition.Start) Alignment.TopStart else Alignment.TopEnd
+
+    BackHandler(enabled = expanded) { onExpandChanged(false) }
+
+    AnimatedVisibility(
+        visible = visible,
+        modifier = modifier,
+        enter = fadeIn() + slideInHorizontally { it },
+        exit = fadeOut() + slideOutHorizontally { it }
+    ) {
+        FloatingActionButtonMenu(
+            expanded = expanded,
+            horizontalAlignment = horizontalAlignment,
+            button = {
+                if (quickRefresh) {
+                    val click = { if (expanded) onExpandChanged(false) else onQuickRefresh() }
+                    ToggleFloatingActionButton(
+                        checked = expanded,
+                        onCheckedChange = { click() },
+                        contentAlignment = buttonAlignment,
+                    ) {
+                        // Keep gestures on the content while the container animates like the
+                        // original toggle FAB when the menu opens and closes.
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .combinedClickable(
+                                    role = Role.Button,
+                                    onClickLabel = stringResource(if (expanded) R.string.btn_close else R.string.btn_refresh),
+                                    onLongClickLabel = stringResource(R.string.forum_fab_open_menu),
+                                    hapticFeedbackEnabled = false,
+                                    onLongClick = { onExpandChanged(true) },
+                                    onClick = click,
+                                ),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                imageVector = if (expanded) Icons.Rounded.Close else Icons.Rounded.Refresh,
+                                contentDescription = stringResource(if (expanded) R.string.btn_close else R.string.btn_refresh),
+                                modifier = Modifier.animateIcon({ checkedProgress }),
+                            )
+                        }
+                    }
+                } else {
+                    DefaultToggleFloatingActionButton(
+                        checked = expanded,
+                        onCheckedChange = onExpandChanged,
+                        contentAlignment = buttonAlignment,
+                    )
+                }
+            },
+        ) {
+            items.fastForEach { (forumFab, icon, menuText) ->
+                FloatingActionButtonMenuItem(
+                    onClick = {
+                        onExpandChanged(false)
+                        onClick(forumFab)
+                    },
+                    icon = { Icon(imageVector = icon, contentDescription = null) },
+                    text = { Text(text = menuText) },
+                )
+            }
+        }
+    }
+
+    if (!visible && expanded) {
+        LaunchedEffect(Unit) { onExpandChanged(false) }
+    }
+}
+
+@Composable
+private fun ClassifyTabs(
+    goodClassifies: List<GoodClassify>,
+    selectedItem: Int?,
+    onSelected: (Int) -> Unit,
+) {
+    LazyRow(
+        modifier = Modifier.padding(vertical = 8.dp, horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        items(items = goodClassifies, key = { it.second /* class_id */ }) { (name, id) ->
+            Chip(text = name, invertColor = selectedItem == id) {
+                if (selectedItem != id) {
+                    onSelected(id)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ForumThreadsPlaceholder(modifier: Modifier = Modifier, threadCount: Int) {
+    Container(modifier = modifier) {
+        Column {
+            repeat(times = threadCount) {
+                FeedCardPlaceholder()
+            }
+        }
+    }
+}

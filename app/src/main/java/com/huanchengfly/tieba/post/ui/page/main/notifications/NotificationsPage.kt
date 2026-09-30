@@ -1,0 +1,185 @@
+package com.huanchengfly.tieba.post.ui.page.main.notifications
+
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material3.FabPosition
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.Tab
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.TopAppBarScrollBehavior
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.util.fastForEachIndexed
+import androidx.navigation.NavController
+import com.huanchengfly.tieba.post.R
+import com.huanchengfly.tieba.post.arch.GlobalEvent
+import com.huanchengfly.tieba.post.arch.emitGlobalEvent
+import com.huanchengfly.tieba.post.navigateDebounced
+import com.huanchengfly.tieba.post.ui.page.Destination
+import com.huanchengfly.tieba.post.ui.page.Destination.Search
+import com.huanchengfly.tieba.post.ui.page.ListDetailPaneHost
+import com.huanchengfly.tieba.post.ui.page.LocalNavController
+import com.huanchengfly.tieba.post.ui.page.ProvideNavigator
+import com.huanchengfly.tieba.post.ui.page.main.MainDestination
+import com.huanchengfly.tieba.post.ui.page.main.MainNavigationSuiteType.Companion.isFloatingNavigationBar
+import com.huanchengfly.tieba.post.ui.page.main.OnMainNavigationScrollTopEvent
+import com.huanchengfly.tieba.post.ui.page.main.bottomNavigationPlaceholder
+import com.huanchengfly.tieba.post.ui.page.main.calculateMainNavigationSuiteType
+import com.huanchengfly.tieba.post.ui.page.main.notifications.list.NotificationsListPage
+import com.huanchengfly.tieba.post.ui.page.main.notifications.list.NotificationsType
+import com.huanchengfly.tieba.post.ui.utils.backToTopFabPosition
+import com.huanchengfly.tieba.post.ui.widgets.compose.AccountNavIconIfCompact
+import com.huanchengfly.tieba.post.ui.widgets.compose.ActionItem
+import com.huanchengfly.tieba.post.ui.widgets.compose.BackNavigationIcon
+import com.huanchengfly.tieba.post.ui.widgets.compose.BlurNavigationBarPlaceHolder
+import com.huanchengfly.tieba.post.ui.widgets.compose.DefaultBackToTopFAB
+import com.huanchengfly.tieba.post.ui.widgets.compose.FancyAnimatedIndicatorWithModifier
+import com.huanchengfly.tieba.post.ui.widgets.compose.MyScaffold
+import com.huanchengfly.tieba.post.ui.widgets.compose.TopAppBarPaged
+import com.huanchengfly.tieba.post.ui.widgets.compose.rememberPagerListStates
+import kotlinx.coroutines.launch
+
+@Composable
+fun NotificationsPage(
+    initialPage: NotificationsType = NotificationsType.ReplyMe,
+    fromHome: Boolean = false,
+    navigator: NavController = LocalNavController.current
+) {
+    val pages = NotificationsType.entries
+    val pagerState = rememberPagerState(initialPage = initialPage.ordinal, pageCount = { pages.size })
+    val listStates = rememberPagerListStates(pages.size)
+    val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
+    val coroutineScope = rememberCoroutineScope()
+
+    OnMainNavigationScrollTopEvent<MainDestination.Notification>(
+        coroutineScope = coroutineScope,
+        topAppBarState = scrollBehavior.state,
+        listState = { listStates.getOrNull(pagerState.currentPage) }
+    )
+
+    ListDetailPaneHost(navigator = navigator, modifier = Modifier.fillMaxSize()) { onOpenThread ->
+        MyScaffold(
+            useMD2Layout = true,
+            topBar = {
+                NotificationsToolBar(
+                    navigator = navigator,
+                    fromHome = fromHome,
+                    scrollBehavior = scrollBehavior,
+                    canScrollBackward = {
+                        listStates[pagerState.currentPage].canScrollBackward
+                    }
+                ) {
+                    PrimaryTabRow(
+                        selectedTabIndex = pagerState.currentPage,
+                        indicator = {
+                            FancyAnimatedIndicatorWithModifier(pagerState.currentPage)
+                        },
+                        containerColor = Color.Transparent // Use Toolbar color
+                    ) {
+                        pages.fastForEachIndexed { index, type ->
+                            val text = when (type) {
+                                NotificationsType.ReplyMe -> R.string.title_reply_me
+
+                                NotificationsType.AtMe -> R.string.title_at_me
+                            }
+
+                            Tab(
+                                text = {
+                                    Text(text = stringResource(id = text), letterSpacing = 0.75.sp)
+                                },
+                                selected = pagerState.currentPage == index,
+                                onClick = {
+                                    coroutineScope.launch {
+                                        pagerState.animateScrollToPage(index)
+                                    }
+                                },
+                                unselectedContentColor = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                }
+            },
+            bottomBar = if (fromHome) bottomNavigationPlaceholder else BlurNavigationBarPlaceHolder,
+            bottomBarAtop = calculateMainNavigationSuiteType().isFloatingNavigationBar,
+            floatingActionButton = {
+                // 未在顶部时回顶 FAB 常驻，与底栏隐藏状态无关
+                val visible by remember {
+                    derivedStateOf { listStates[pagerState.currentPage].canScrollBackward }
+                }
+                DefaultBackToTopFAB(visible = visible) {
+                    coroutineScope.emitGlobalEvent(GlobalEvent.ScrollToTop(MainDestination.Notification))
+                }
+            },
+        floatingActionButtonPosition = backToTopFabPosition(),
+        ) { contentPadding ->
+            ProvideNavigator(navigator = navigator) {
+                HorizontalPager(
+                    state = pagerState,
+                    key = { pages[it] }
+                ) {
+                    NotificationsListPage(
+                        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+                        type = NotificationsType.entries[it],
+                        listState = listStates[pagerState.currentPage],
+                        contentPadding = contentPadding,
+                        onOpenThread = onOpenThread,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NotificationsToolBar(
+    navigator: NavController,
+    fromHome: Boolean,
+    scrollBehavior: TopAppBarScrollBehavior?,
+    canScrollBackward: () -> Boolean,
+    content: (@Composable ColumnScope.() -> Unit)?
+) {
+    if (fromHome) {
+        TopAppBarPaged(
+            title = { Text(text = stringResource(R.string.title_notifications)) },
+            navigationIcon = {
+                AccountNavIconIfCompact(onLoginClicked = { navigator.navigate(Destination.Login) })
+            },
+            actions = {
+                ActionItem(
+                    icon = Icons.Rounded.Search,
+                    contentDescription = stringResource(id = R.string.title_search),
+                    onClick = { navigator.navigateDebounced(Search) }
+                )
+            },
+            scrollBehavior = scrollBehavior,
+            canScrollBackward = canScrollBackward,
+            content = content
+        )
+    } else {
+        TopAppBarPaged(
+            title = { Text(text = stringResource(R.string.title_notifications)) },
+            titleHorizontalAlignment = Alignment.CenterHorizontally,
+            navigationIcon = {
+                BackNavigationIcon(onBackPressed = navigator::navigateUp)
+            },
+            scrollBehavior = scrollBehavior,
+            canScrollBackward = canScrollBackward,
+            content = content
+        )
+    }
+}

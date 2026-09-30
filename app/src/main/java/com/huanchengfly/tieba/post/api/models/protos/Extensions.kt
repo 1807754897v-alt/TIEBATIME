@@ -1,0 +1,315 @@
+package com.huanchengfly.tieba.post.api.models.protos
+
+import androidx.annotation.WorkerThread
+import androidx.compose.foundation.text.appendInlineContent
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withAnnotation
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.util.fastFirstOrNull
+import androidx.compose.ui.util.fastForEach
+import androidx.compose.ui.util.fastMap
+import androidx.core.net.toUri
+import com.huanchengfly.tieba.post.components.ClipBoardLinkDetector.isTieba
+import com.huanchengfly.tieba.post.theme.RedA700
+import com.huanchengfly.tieba.post.ui.common.PbContentRender
+import com.huanchengfly.tieba.post.ui.common.PbContentRender.Companion.TAG_URL
+import com.huanchengfly.tieba.post.ui.common.PbContentRender.Companion.TAG_USER
+import com.huanchengfly.tieba.post.ui.common.PbInlineType
+import com.huanchengfly.tieba.post.ui.common.PicContentRender
+import com.huanchengfly.tieba.post.ui.common.PureTextContentRender
+import com.huanchengfly.tieba.post.ui.common.TextContentRender.Companion.appendText
+import com.huanchengfly.tieba.post.ui.common.VideoContentRender
+import com.huanchengfly.tieba.post.ui.common.VoiceContentRender
+import com.huanchengfly.tieba.post.ui.utils.getPhotoViewData
+import com.huanchengfly.tieba.post.utils.EmoticonManager
+import com.huanchengfly.tieba.post.utils.EmoticonUtil
+import com.huanchengfly.tieba.post.utils.EmoticonUtil.singleEmoticonString
+import com.huanchengfly.tieba.post.utils.ImageUtil
+import com.huanchengfly.tieba.post.utils.ThemeUtil
+import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.toImmutableList
+
+private val abstractTextPattern by lazy { Regex(" {2,}") }
+
+val List<Abstract>.abstractText: String
+    get() = joinToString(separator = "") {
+        when (it.type) {
+            0 -> it.text.replace(abstractTextPattern, " ")
+            4 -> it.text
+
+            else -> ""
+        }
+    }
+
+val ThreadInfo.abstractText: String
+    get() = richAbstract.joinToString(separator = "") {
+        when (it.type) {
+            0 -> it.text.replace(abstractTextPattern, " ")
+            2 -> {
+                EmoticonManager.registerEmoticon(it.text, it.c)
+                EmoticonUtil.inlineTextFormat(name = it.c)
+            }
+
+            else -> ""
+        }
+    }
+
+val PostInfoList.abstractText: String
+    get() = rich_abstract.joinToString(separator = "") {
+        when (it.type) {
+            0 -> it.text.replace(abstractTextPattern, " ")
+            2 -> {
+                EmoticonManager.registerEmoticon(it.text, it.c)
+                EmoticonUtil.inlineTextFormat(name = it.c)
+            }
+
+            else -> ""
+        }
+    }
+
+private val Media.anyUrl: String?
+    get() = when {
+        bigPic.isNotEmpty() -> bigPic
+        srcPic.isNotEmpty() -> srcPic
+        originPic.isNotEmpty() -> originPic
+        else -> null
+    }
+
+val Media.isExpired: Boolean
+    get() = type == 6 || type == 5 || anyUrl == null
+
+// Almost the same with PbContent.getPicUrl (OfficialProtobufTiebaApi v12.52.1.0)
+fun Media.getPicUrl(loadType: Int): String {
+    val url = ImageUtil.getThumbnail(
+        loadType = loadType,
+        // originUrl = originPic,   // Best quality in [Media]
+        originUrl = srcPic,         // Medium
+        smallPicUrl = bigPic        // Worst quality in [Media]
+    )
+    // Edge case: Empty srcPic in repost thread
+    return url.ifEmpty { anyUrl.orEmpty() }
+}
+
+private fun PbContent.getPicUrl(loadType: Int): String {
+    val url = ImageUtil.getThumbnail(
+        loadType = loadType,
+        // originUrl = originSrc,   // Best quality in [PbContent]
+        originUrl = bigCdnSrc,      // Medium
+        smallPicUrl = cdnSrc        // Worst quality in [PbContent]
+    ).tb2ImageWorkaround()
+
+    // Some sub-post responses only return one of the legacy fields.
+    // Prefer originSrc only when both cdn urls are unavailable.
+    return url.ifEmpty {
+        listOf(originSrc, cdnSrcActive, bigSrc, src)
+            .firstOrNull { it.isNotBlank() }
+            .orEmpty()
+            .tb2ImageWorkaround()
+    }
+}
+
+private fun PbContent.getOriginPicUrl(fallbackUrl: String): String {
+    return listOf(originSrc, bigCdnSrc, cdnSrcActive, bigSrc, src, cdnSrc)
+        .firstOrNull { it.isNotBlank() }
+        ?: fallbackUrl
+}
+
+// 远古坟贴图片
+private fun String.tb2ImageWorkaround(): String {
+    if (!startsWith("http://c.tieba.baidu.com")) return this
+
+    return try {
+        val src = toUri().getQueryParameter("src") ?: throw NullPointerException("src not exist in $this")
+        if (src.startsWith("//")) "https:$src" else src
+    } catch (e: Throwable) {
+        e.printStackTrace()
+        this
+    }
+}
+
+val List<PbContent>.plainText: String?
+    get() {
+        if (isEmpty()) return null
+
+        val builder = StringBuilder()
+        var text: String
+
+        forEachIndexed { i, it ->
+            text = when (it.type) {
+                in PureTextType -> it.text
+
+                1 -> "[${it.link}]"
+
+                2 -> EmoticonUtil.inlineTextFormat(name = it.c)
+
+                3, 20 -> PbContentRender.MEDIA_PICTURE
+
+                5 -> {
+                    if (it.src.isNotBlank()) PbContentRender.MEDIA_VIDEO else PbContentRender.MEDIA_VIDEO + it.text
+                }
+
+                10 -> PbContentRender.MEDIA_VOICE
+
+                else -> it.text
+            }
+            builder.append(text)
+            if (i < lastIndex) builder.append('\n')
+        }
+
+        return builder.toString()
+    }
+
+fun PbContent.getPicSize(): IntSize? {
+    try {
+        if (bsize.isNotEmpty()) {
+            return bsize.split(",")
+                .map { it.toIntOrNull() ?: throw NumberFormatException("Not a number $it") }
+                .let { IntSize(width = it[0], height = it[1]) }
+        }
+
+        // Newer sub-post responses may omit bsize but still provide width/height.
+        return if (width > 0 && height > 0) IntSize(width = width, height = height) else null
+    } catch (e: Exception) {
+        e.printStackTrace()
+    }
+    return null
+}
+
+private val PureTextType = arrayOf(0, 9, 27, 35/*传送门?*/, 40)
+
+// 显示为贴吧链接实际是外部链接, 这种情况应直接标记为恶意链接
+private fun isMaliciousLink(linkPbContent: PbContent): Boolean {
+    return isTieba(linkPbContent.text, skipSchemeCheck = true) && !isTieba(linkPbContent.link)
+}
+
+fun List<PbContent>.buildRenders(imageLoadType: Int): ImmutableList<PbContentRender> {
+        val pureText = fastFirstOrNull { it.type !in PureTextType } == null
+        if (pureText) {
+            return fastMap { PureTextContentRender(it.text) }.toImmutableList()
+        }
+        // 富文本 Render
+        val renders = mutableListOf<PbContentRender>()
+        val currentColorScheme = ThemeUtil.currentColorScheme()
+        val highLightStyle = SpanStyle(color = currentColorScheme.primary)
+        val redHighLightStyle = SpanStyle(color = RedA700)
+
+        fastForEach {
+            when (it.type) {
+                in PureTextType -> renders.appendText(it.text)
+
+                1 -> {
+                    val text = if (isMaliciousLink(it)) {
+                        buildAnnotatedString {
+                            appendInlineContent(PbInlineType.LINK_MALICIOUS.name, alternateText = "🔗")
+                            // Display actual link when it's malicious
+                            withAnnotation(tag = TAG_URL, annotation = it.link) {
+                                withStyle(redHighLightStyle) { append(it.link) }
+                            }
+                        }
+                    } else {
+                        buildAnnotatedString {
+                            appendInlineContent(PbInlineType.LINK.name, alternateText = "🔗")
+                            withAnnotation(tag = TAG_URL, annotation = it.link) {
+                                withStyle(highLightStyle) { append(it.text) }
+                            }
+                        }
+                    }
+                    renders.appendText(text)
+                }
+
+                2 -> {
+                    if (EmoticonManager.registerEmoticon(it.text, it.c)) {
+                        renders.appendText(EmoticonUtil.inlineTextFormat(name = it.c).singleEmoticonString)
+                    } else {
+                        renders.appendText(EmoticonUtil.inlineTextFormat(name = it.c))
+                    }
+                }
+
+                3 -> {
+                    val picUrl = it.getPicUrl(imageLoadType)
+                    val originUrl = it.getOriginPicUrl(picUrl)
+                    renders.add(
+                        PicContentRender(
+                            picUrl = picUrl,
+                            originUrl = originUrl,
+                            originSize = it.originSize,
+                            dimensions = it.getPicSize(),
+                            picId = ImageUtil.getPicId(originUrl),
+                        )
+                    )
+                }
+
+                4 -> {
+                    val text = buildAnnotatedString {
+                        withAnnotation(tag = TAG_USER, annotation = "${it.uid}") {
+                            withStyle(highLightStyle) {
+                                append(it.text)
+                            }
+                        }
+                    }
+                    renders.appendText(text)
+                }
+
+                5 -> {
+                    if (it.src.isNotBlank()) {
+                        renders.add(
+                            VideoContentRender(
+                                videoUrl = it.link,
+                                picUrl = it.src,
+                                webUrl = it.text,
+                                dimensions = it.getPicSize()
+                            )
+                        )
+                    } else {
+                        val text = buildAnnotatedString {
+                            appendInlineContent(PbInlineType.VIDEO.name, alternateText = "🎥")
+                            withAnnotation(tag = TAG_URL, annotation = it.text) {
+                                withStyle(highLightStyle) {
+                                    append(PbContentRender.MEDIA_VIDEO)
+                                    append(it.text)
+                                }
+                            }
+                        }
+                        renders.appendText(text)
+                    }
+                }
+
+                10 -> {
+                    renders.add(VoiceContentRender(it.voiceMD5, it.duringTime))
+                }
+
+                20 -> {
+                    renders.add(
+                        PicContentRender(
+                            picUrl = it.src,
+                            originUrl = it.src,
+                            originSize = it.originSize,
+                            dimensions = it.getPicSize(),
+                            picId = ImageUtil.getPicId(it.src)
+                        )
+                    )
+                }
+            }
+        }
+
+        return renders.toImmutableList()
+    }
+
+@WorkerThread
+fun Post.buildContentRenders(imageLoadType: Int): List<PbContentRender> {
+    val renders = content.buildRenders(imageLoadType)
+    // 帖子全部图片, 用于构建整贴图集, 多图网格点击可直接浏览全部图片
+    val pics = renders.filterIsInstance<PicContentRender>()
+    var picIndex = 0
+    return renders.map { render ->
+        if (render is PicContentRender) {
+            render.copy(photoViewData = getPhotoViewData(post = this, pics = pics, index = picIndex++))
+        } else {
+            render
+        }
+    }
+}
+
+fun VideoInfo.aspectRatio(): Float = thumbnailWidth.toFloat() / thumbnailHeight

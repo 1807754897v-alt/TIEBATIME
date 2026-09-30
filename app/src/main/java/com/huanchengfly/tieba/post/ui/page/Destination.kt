@@ -1,0 +1,204 @@
+package com.huanchengfly.tieba.post.ui.page
+
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import android.os.Parcelable
+import androidx.navigation.NavType
+import com.huanchengfly.tieba.post.ui.models.Author
+import com.huanchengfly.tieba.post.ui.models.UserData
+import com.huanchengfly.tieba.post.ui.page.main.notifications.list.NotificationsType
+import com.huanchengfly.tieba.post.ui.page.thread.ThreadFrom
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+
+sealed interface Destination {
+
+    @Serializable
+    data object Main: Destination
+
+    @Serializable
+    data object AppTheme: Destination
+
+    @Serializable
+    data object History: Destination
+
+    @Serializable
+    data object HotTopicList: Destination
+
+    @Serializable
+    data class HotTopicDetail(val topicId: Long, val topicName: String): Destination
+
+    @Serializable
+    data class Notification(
+        val type: Int = NotificationsType.ReplyMe.ordinal
+    ): Destination
+
+    @Serializable
+    data object Login: Destination
+
+    @Serializable
+    data object Search: Destination
+
+    /**
+     * @param forumName 吧名
+     * @param avatar 吧头像Url
+     * @param transitionKey 过渡动画额外标识键. 此键将与吧名组合为唯一标识键, 确保推荐页, 搜索页中多个贴子来
+     * 自同一个贴吧时过渡动画的唯一性.
+     * @param initialThreadId 从详情进入吧时携带的当前帖子, 用于进入后保持右侧详情
+     * @param initialPostId 初始帖子的定位楼层
+     * */
+    @Serializable
+    data class Forum(
+        val forumName: String,
+        val avatar: String? = null,
+        val transitionKey: String? = null,
+        val initialThreadId: Long? = null,
+        val initialPostId: Long = 0,
+    ): Destination
+
+    @Serializable
+    data class ForumDetail(val forumName: String): Destination
+
+    @Serializable
+    data class ForumSearchPost(val forumName: String, val forumId: Long): Destination
+
+    @Serializable
+    data class ForumRuleDetail(val forumId: Long): Destination
+
+    @Serializable
+    data class Thread(
+        val threadId: Long,
+        val forumId: Long? = null,
+        val postId: Long = 0,
+        val seeLz: Boolean = false,
+        val sortType: Int = 0,
+        val from: ThreadFrom? = null,
+        val scrollToReply: Boolean = false,
+        /** 非空 = 离线阅读该本地备份（数据全部来自 Room，无网可用） */
+        val localBackupId: String? = null,
+    ): Destination
+
+    @Serializable
+    data object ThreadStore: Destination
+
+    /** 本地备份帖子列表（Shelf 核心能力，Lite 原生入口） */
+    @Serializable
+    data object LocalBackupList: Destination
+
+
+    @Serializable
+    data class SubPosts(
+        val threadId: Long,
+        val forumId: Long = 0L,
+        val postId: Long = 0L,
+        val subPostId: Long = 0L,
+        val isSheet: Boolean = true,
+    ): Destination
+
+    @Serializable
+    data class CopyText(val text: String): Destination
+
+    @Serializable
+    data class Reply(
+        val forumId: Long,
+        val forumName: String,
+        val threadId: Long,
+        val postId: Long? = null,
+        val subPostId: Long? = null,
+        val replyUserId: Long? = null,
+        val replyUserName: String? = null,
+        val replyUserPortrait: String? = null,
+        val tbs: String? = null,
+        val isDialog: Boolean = false,
+    ): Destination
+
+    @Serializable
+    data class UserFollowList(val uid: Long): Destination
+
+    /**
+     * @param uid 用户ID
+     * @param avatar 用户头像Url
+     * @param nickname 昵称
+     * @param username 用户名
+     * @param transitionKey 过渡动画额外标识键. 确保推荐页, 搜索页中包含多个相同用户时过渡动画的唯一性
+     * @param recordHistory 记录访问历史
+     * */
+    @Serializable
+    data class UserProfile(
+        val uid: Long,
+        val avatar: String? = null,
+        val nickname: String? = null,
+        val username: String? = null,
+        val transitionKey: String? = null,
+        val recordHistory: Boolean = true,
+    ): Destination {
+
+        constructor(user: Author, transitionKey: String? = null, recordHistory: Boolean = true): this(
+            uid = user.id,
+            avatar = user.avatarUrl,
+            nickname = user.name,
+            transitionKey = transitionKey,
+            recordHistory = recordHistory
+        )
+
+        constructor(user: UserData, transitionKey: String? = null, recordHistory: Boolean = true): this(
+            uid = user.id,
+            avatar = user.avatarUrl,
+            nickname = user.nameShow,
+            transitionKey = transitionKey,
+            recordHistory = recordHistory
+        )
+    }
+
+    @Serializable
+    data class WebView(val initialUrl: String, val customClient: Boolean = true): Destination
+
+    @Serializable
+    object Welcome: Destination
+
+    @Serializable
+    data object Settings: Destination
+
+    companion object {
+
+        inline fun <reified T> navTypeOf(
+            isNullableAllowed: Boolean = false,
+            json: Json = Json
+        ) = object : NavType<T>(isNullableAllowed = isNullableAllowed) {
+
+            override fun get(bundle: Bundle, key: String): T? {
+                return bundle.getString(key)?.let(json::decodeFromString)
+            }
+
+            override fun put(bundle: Bundle, key: String, value: T) {
+                bundle.putString(key, json.encodeToString(value))
+            }
+
+            override fun parseValue(value: String): T = json.decodeFromString(Uri.decode(value))
+
+            override fun serializeAsValue(value: T): String = Uri.encode(json.encodeToString(value))
+        }
+        inline fun <reified T : Parcelable> parcelableListType(
+            isNullableAllowed: Boolean = false,
+            json: Json = Json,
+        ) = object : NavType<List<T>>(isNullableAllowed = isNullableAllowed) {
+            override fun get(bundle: Bundle, key: String): List<T>? {
+                return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    bundle.getParcelableArrayList(key, T::class.java)
+                } else {
+                    @Suppress("DEPRECATION")
+                    bundle.getParcelableArrayList(key)
+                }
+            }
+
+            override fun parseValue(value: String): List<T> = json.decodeFromString(Uri.decode(value))
+
+            override fun serializeAsValue(value: List<T>): String = Uri.encode(json.encodeToString(value))
+
+            override fun put(bundle: Bundle, key: String, value: List<T>) {
+                bundle.putParcelableArrayList(key, value as? ArrayList ?: ArrayList(value))
+            }
+        }
+    }
+}
