@@ -69,14 +69,23 @@ object UIDUtil {
             return "$cUID|$imei"
         }
 
+    /** uuid 每请求 header 都会用到，缓存避免热路径 runBlocking 读 DataStore */
+    @Volatile
+    private var cachedUUID: String? = null
+
     val uUID: String
         get() {
-            val uuidSettings = INSTANCE.settingRepository.UUIDSettings
-            var uuid = runBlocking { uuidSettings.snapshot() }
-            if (uuid.isEmpty()) {
-                uuid = UUID.randomUUID().toString()
-                uuidSettings.set(uuid)
+            cachedUUID?.let { return it }
+            synchronized(this) {
+                cachedUUID?.let { return it }
+                val uuidSettings = INSTANCE.settingRepository.UUIDSettings
+                var uuid = runBlocking { uuidSettings.snapshot() }
+                if (uuid.isEmpty()) {
+                    uuid = UUID.randomUUID().toString()
+                    uuidSettings.set(uuid)
+                }
+                cachedUUID = uuid
+                return uuid
             }
-            return uuid
         }
 }

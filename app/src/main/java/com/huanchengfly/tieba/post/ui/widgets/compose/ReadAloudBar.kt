@@ -14,6 +14,7 @@ import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -63,56 +64,66 @@ fun ReadAloudBar(
         shadowElevation = 6.dp,
         modifier = modifier,
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(start = 4.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
-        ) {
-            IconButton(onClick = onPrevious) {
-                Icon(
-                    imageVector = Icons.Rounded.SkipPrevious,
-                    contentDescription = stringResource(id = R.string.tts_prev_floor),
+        Column {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(start = 4.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
+            ) {
+                IconButton(onClick = onPrevious) {
+                    Icon(
+                        imageVector = Icons.Rounded.SkipPrevious,
+                        contentDescription = stringResource(id = R.string.tts_prev_floor),
+                    )
+                }
+                Text(
+                    text = buildString {
+                        append(stringResource(R.string.tts_bar_reading, state.currentFloor, state.totalFloors))
+                        if (timerText > 0L) {
+                            append(" · ")
+                            append(stringResource(R.string.tts_timer_left, timerText / 60_000L + 1))
+                        }
+                    },
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1,
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .padding(horizontal = 4.dp),
                 )
+                IconButton(onClick = onNext) {
+                    Icon(
+                        imageVector = Icons.Rounded.SkipNext,
+                        contentDescription = stringResource(id = R.string.tts_next_floor),
+                    )
+                }
+                IconButton(onClick = onPauseResume) {
+                    Icon(
+                        imageVector = if (state.paused) Icons.Rounded.PlayArrow else Icons.Rounded.Pause,
+                        contentDescription = stringResource(
+                            id = if (state.paused) R.string.tts_resume else R.string.tts_pause
+                        ),
+                    )
+                }
+                IconButton(onClick = { showTimerPicker = true }) {
+                    Icon(
+                        imageVector = Icons.Rounded.Timer,
+                        contentDescription = stringResource(id = R.string.tts_timer),
+                    )
+                }
+                IconButton(onClick = onStop) {
+                    Icon(
+                        imageVector = Icons.Rounded.Stop,
+                        contentDescription = stringResource(id = R.string.local_backup_tts_stop),
+                    )
+                }
             }
-            Text(
-                text = buildString {
-                    append(stringResource(R.string.tts_bar_reading, state.currentFloor, state.totalFloors))
-                    if (timerText > 0L) {
-                        append(" · ")
-                        append(stringResource(R.string.tts_timer_left, timerText / 60_000L + 1))
-                    }
+            LinearProgressIndicator(
+                progress = {
+                    (state.index + 1f) / state.totalFloors.coerceAtLeast(1)
                 },
-                style = MaterialTheme.typography.labelMedium,
-                maxLines = 1,
                 modifier = Modifier
-                    .weight(1f, fill = false)
-                    .padding(horizontal = 4.dp),
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, end = 16.dp, bottom = 6.dp),
             )
-            IconButton(onClick = onNext) {
-                Icon(
-                    imageVector = Icons.Rounded.SkipNext,
-                    contentDescription = stringResource(id = R.string.tts_next_floor),
-                )
-            }
-            IconButton(onClick = onPauseResume) {
-                Icon(
-                    imageVector = if (state.paused) Icons.Rounded.PlayArrow else Icons.Rounded.Pause,
-                    contentDescription = stringResource(
-                        id = if (state.paused) R.string.tts_resume else R.string.tts_pause
-                    ),
-                )
-            }
-            IconButton(onClick = { showTimerPicker = true }) {
-                Icon(
-                    imageVector = Icons.Rounded.Timer,
-                    contentDescription = stringResource(id = R.string.tts_timer),
-                )
-            }
-            IconButton(onClick = onStop) {
-                Icon(
-                    imageVector = Icons.Rounded.Stop,
-                    contentDescription = stringResource(id = R.string.local_backup_tts_stop),
-                )
-            }
         }
     }
 

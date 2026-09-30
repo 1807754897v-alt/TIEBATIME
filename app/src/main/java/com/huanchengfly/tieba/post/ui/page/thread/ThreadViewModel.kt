@@ -323,7 +323,8 @@ class ThreadViewModel @Inject constructor(
     }
 
     /**
-     * 朗读全文：从长按的楼层开始（再次点击停止），只读楼主已加载的发言，跳过楼中楼。
+     * 朗读全文：从长按的楼层开始（再次点击停止），跳过楼中楼。
+     * 默认读全部楼层；「只看楼主」模式下只读楼主发言。
      */
     fun onReadAloudClicked(startFloor: Int) {
         if (readAloud.state.value != null) {
@@ -333,8 +334,9 @@ class ThreadViewModel @Inject constructor(
         launchJobInVM {
             runCatching {
                 val state = _uiState.first()
-                val lzItems = (listOfNotNull(state.firstPost) + state.data)
-                    .filter { it.author.isLz && it.plainText.isNotBlank() }
+                val seeLzOnly = state.seeLz
+                val items = (listOfNotNull(state.firstPost) + state.data)
+                    .filter { (!seeLzOnly || it.author.isLz) && it.plainText.isNotBlank() }
                     .distinctBy { it.floor }
                     .sortedBy { it.floor }
                     .filter { it.floor >= startFloor }
@@ -344,8 +346,12 @@ class ThreadViewModel @Inject constructor(
                             text = context.getString(R.string.local_backup_tts_floor, it.floor) + "，" + it.plainText.sanitizeForTts(),
                         )
                     }
-                require(lzItems.isNotEmpty()) { context.getString(R.string.tts_no_lz_after_floor) }
-                readAloud.start(lzItems, title = state.thread?.title)
+                require(items.isNotEmpty()) {
+                    context.getString(
+                        if (seeLzOnly) R.string.tts_no_lz_after_floor else R.string.tts_no_more_content
+                    )
+                }
+                readAloud.start(items, title = state.thread?.title)
             }.onFailure {
                 sendUiEvent(CommonUiEvent.Toast(it.message ?: context.getString(R.string.local_backup_tts_unavailable)))
             }

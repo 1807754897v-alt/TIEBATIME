@@ -56,7 +56,17 @@ class AccountUtil private constructor(context: Context) {
 
         inline fun <T> getAccountInfo(getter: Account.() -> T): T? = getLoginInfo()?.getter()
 
-        fun getLoginInfo(): Account? = runBlocking { getInstance().currentAccount.first() }
+        /**
+         * 拦截器热路径（每个网络请求的 header/cookie lambda 会调用多次）。
+         * 优先读内存缓存，避免每次 runBlocking 阻塞 DataStore+Room 流。
+         */
+        fun getLoginInfo(): Account? {
+            val instance = getInstance()
+            instance.cachedAccount?.let { return it }
+            return runBlocking {
+                instance.currentAccount.first().also { instance.cachedAccount = it }
+            }
+        }
 
         fun isLoggedIn(): Boolean = getLoginInfo() != null
 
@@ -98,10 +108,20 @@ class AccountUtil private constructor(context: Context) {
 
     private val timeDao: TimestampDao
 
+    /** 当前账号内存缓存，由 [init] 中的收集协程保持最新 */
+    @Volatile
+    internal var cachedAccount: Account? = null
+        private set
+
     init {
         val database = TbLiteDatabase.getInstance(context)
         accountDao = database.accountDao()
         timeDao = database.timestampDao()
+        scope.launch {
+            currentAccount.collect { cachedAccount = it }
+        }
+        // 启动即预热，首个网络请求到来时缓存已就绪
+        scope.launch { UIDUtil.uUID }
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)

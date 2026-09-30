@@ -112,8 +112,9 @@
     <string name="settings_local_backup_max_pages">单帖最大备份页数</string>
     <string name="settings_local_backup_note">“本地备份”保存帖子内容在本机，可离线阅读、导出；与「设置备份」（备份 App 配置）无关。楼中楼暂不在备份范围。</string>
     <string name="tts_bar_reading">第 %1$d / 共 %2$d 楼</string>
-    <string name="tts_read_done">已读完全部已加载的楼主发言</string>
+    <string name="tts_read_done">已读完全部内容</string>
     <string name="tts_no_lz_after_floor">这一层之后没有楼主的发言</string>
+    <string name="tts_no_more_content">这一层之后没有可朗读的内容</string>
     <string name="tts_prev_floor">上一楼</string>
     <string name="tts_next_floor">下一楼</string>
     <string name="tts_timer">定时停止（关闭/15/30/60 分钟）</string>
