@@ -46,7 +46,7 @@ jobs:
           version_code=`jq -r ".elements[0].versionCode" app/build/outputs/apk/release/output-metadata.json`
           version_name=`jq -r ".elements[0].versionName" app/build/outputs/apk/release/output-metadata.json`
           echo "version_name=$version_name" >> "$GITHUB_OUTPUT"
-          version="TiebaLite-${{ github.ref_name }}+${sha}.$version_code"
+          version="TieBaTime-${{ github.ref_name }}+${sha}.$version_code"
           mv app/build/outputs/apk/release/app-release.apk "$version.apk"
 
       - name: Upload mapping
@@ -60,7 +60,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-artifact
-          path: 'TiebaLite-*.apk'
+          path: 'TieBaTime-*.apk'
 
   release:
     name: Create Release
@@ -91,4 +91,4 @@ jobs:
           draft: true
           prerelease: ${{ contains(github.ref_name, 'beta') }}
           generate_release_notes: true
-          files: 'out/TiebaLite-*.apk'
+          files: 'out/TieBaTime-*.apk'
