@@ -115,6 +115,8 @@
     <string name="tts_read_done">已读完全部内容</string>
     <string name="tts_no_lz_after_floor">这一层之后没有楼主的发言</string>
     <string name="tts_no_more_content">这一层之后没有可朗读的内容</string>
+    <string name="jump_by_month">按月份跳转</string>
+    <string name="local_backup_resume_toast">已恢复至上次阅读位置</string>
     <string name="tts_prev_floor">上一楼</string>
     <string name="tts_next_floor">下一楼</string>
     <string name="tts_timer">定时停止（关闭/15/30/60 分钟）</string>

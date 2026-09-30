@@ -238,14 +238,18 @@ class ThreadViewModel @Inject constructor(
                             )
                         }
                 }
-                val picIndexByUrl = globalPicItems.associate { it.originUrl to (it.picIndex - 1) }
+                // 全局索引映射：查看器按此定位打开位置（楼内索引会导致永远打开第一张）
+                val globalIndexByUrl = HashMap<String, Int>()
+                globalPicItems.forEachIndexed { idx, item ->
+                    globalIndexByUrl.putIfAbsent(item.originUrl, idx)
+                }
                 val posts = floors.map { floor ->
                     floor.toOfflinePostData(
                         images = imagesByFloor[floor.floorNumber].orEmpty(),
                         imagesByUrl = imagesByUrl,
                         subPosts = subPostsByPost[floor.postId].orEmpty(),
                         globalPicItems = globalPicItems,
-                        picIndexByUrl = picIndexByUrl,
+                        globalIndexByUrl = globalIndexByUrl,
                     )
                 }
                 val firstPost = posts.firstOrNull { it.floor <= 1 } ?: posts.firstOrNull()
@@ -284,10 +288,16 @@ class ThreadViewModel @Inject constructor(
                         ),
                     )
                 }
-                // 恢复上次阅读进度
+                // 恢复上次阅读进度（页码同步更新，并提示用户避免误解为随机跳页）
                 val savedFloor = backupRepository.getProgress(backupId)?.floorNumber ?: 0
                 val savedPostId = floors.firstOrNull { it.floorNumber >= savedFloor }?.postId ?: 0L
-                if (savedPostId > 0L) {
+                if (savedPostId > 0L && savedFloor > 0) {
+                    val totalPages = (post.totalPages ?: 1).coerceAtLeast(1)
+                    val perPage = ((floors.size + totalPages - 1) / totalPages).coerceAtLeast(1)
+                    val page = ((savedFloor + perPage - 1) / perPage).coerceIn(1, totalPages)
+                    _uiState.update { st ->
+                        st.copy(pageData = st.pageData.copy(current = page, previous = page))
+                    }
                     sendUiEvent(ThreadUiEvent.LoadSuccess(0, savedPostId))
                 }
             }.onFailure { e ->
@@ -333,17 +343,24 @@ class ThreadViewModel @Inject constructor(
             runCatching {
                 val state = _uiState.first()
                 val seeLzOnly = state.seeLz
-                val items = (listOfNotNull(state.firstPost) + state.data)
+                val base = (listOfNotNull(state.firstPost) + state.data)
                     .filter { (!seeLzOnly || it.author.isLz) && it.plainText.isNotBlank() }
                     .distinctBy { it.floor }
                     .sortedBy { it.floor }
                     .filter { it.floor >= startFloor }
-                    .map {
-                        ReadAloudItem(
-                            floor = it.floor,
-                            text = context.getString(R.string.local_backup_tts_floor, it.floor) + "，" + it.plainText.sanitizeForTts(),
-                        )
-                    }
+                // 不播报楼号；月份更迭时播报一次「xxxx年x月」
+                val monthFmt = java.text.SimpleDateFormat("yyyy年M月", java.util.Locale.CHINA)
+                var lastMonth: String? = null
+                val items = base.map { p ->
+                    val month = if (p.time > 0) monthFmt.format(java.util.Date(p.time * 1000)) else null
+                    val prefix = if (month != null && month != lastMonth) "$month。" else ""
+                    lastMonth = month
+                    ReadAloudItem(
+                        floor = p.floor,
+                        text = (prefix + p.plainText.sanitizeForTts()).trim(),
+                        time = p.time,
+                    )
+                }
                 require(items.isNotEmpty()) {
                     context.getString(
                         if (seeLzOnly) R.string.tts_no_lz_after_floor else R.string.tts_no_more_content
@@ -354,6 +371,23 @@ class ThreadViewModel @Inject constructor(
                 sendUiEvent(CommonUiEvent.Toast(it.message ?: context.getString(R.string.local_backup_tts_unavailable)))
             }
         }
+    }
+
+    /** 楼层时间 → 「yyyy年M月」标签 */
+    private fun monthLabel(time: Long): String =
+        java.text.SimpleDateFormat("yyyy年M月", java.util.Locale.CHINA).format(java.util.Date(time * 1000))
+
+    /** 当前已加载楼层的月份列表（升序去重），供按月跳转选择 */
+    fun availableMonths(): List<String> {
+        val all = listOfNotNull(currentState.firstPost) + currentState.data
+        return all.filter { it.time > 0 }.map { monthLabel(it.time) }.distinct()
+    }
+
+    /** 按月跳转：定位到该月第一个已加载的楼层 */
+    fun jumpToMonth(label: String) {
+        val all = listOfNotNull(currentState.firstPost) + currentState.data
+        val target = all.firstOrNull { it.time > 0 && monthLabel(it.time) == label } ?: return
+        sendUiEvent(ThreadUiEvent.JumpToPost(target.id))
     }
 
     fun requestLoad(page: Int = 1, postId: Long, scrollToReply: Boolean = true) {
@@ -450,6 +484,11 @@ class ThreadViewModel @Inject constructor(
             val perPage = (state.data.size + total - 1) / total
             val index = ((page - 1).coerceAtLeast(0) * perPage).coerceIn(0, (state.data.size - 1).coerceAtLeast(0))
             val targetPostId = state.data.getOrNull(index)?.id ?: state.firstPost?.id ?: 0L
+            // 同步页码：跳页后顶栏页码跟着走，不再永远停在第一页
+            val safePage = page.coerceAtLeast(1)
+            _uiState.update { st ->
+                st.copy(pageData = st.pageData.copy(current = safePage, previous = safePage))
+            }
             if (targetPostId > 0L) sendUiEvent(ThreadUiEvent.LoadSuccess(page, targetPostId))
             return
         }
@@ -987,7 +1026,7 @@ class ThreadViewModel @Inject constructor(
         imagesByUrl: Map<String, LocalBackupImage>,
         subPosts: List<LocalBackupSubPost>,
         globalPicItems: List<PicItem>,
-        picIndexByUrl: Map<String, Int>,
+        globalIndexByUrl: Map<String, Int>,
     ): PostData {
         val floorPicUrls = imageUrls.split('\n')
             .map { it.trim() }
@@ -1013,7 +1052,7 @@ class ThreadViewModel @Inject constructor(
                         photoViewData = PhotoViewData(
                             data = null,
                             picItems = globalPicItems,
-                            index = picIndexByUrl[src] ?: i,
+                            index = globalIndexByUrl[src] ?: i,
                         ),
                     )
                 )
@@ -1117,6 +1156,9 @@ sealed interface ThreadUiEvent : UiEvent {
     data class LoadPreviousSuccess(val previousIndex: Int, val offset: Int) : ThreadUiEvent
 
     data class LoadSuccess(val page: Int, val postId: Long) : ThreadUiEvent
+
+    /** 定位到指定楼层（按月跳转、朗读跟随等） */
+    data class JumpToPost(val postId: Long) : ThreadUiEvent
 
     data class ToReplyDestination(val direction: Reply): ThreadUiEvent
 

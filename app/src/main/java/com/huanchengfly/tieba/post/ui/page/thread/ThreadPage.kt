@@ -6,6 +6,9 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import android.widget.Toast
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.material3.AssistChip
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -678,8 +681,25 @@ fun ThreadPage(
             .invokeOnCompletion { showBottomSheet = false }
     }
 
-    viewModel.uiEvent.collectUiEventWithLifecycle {
-        val message = when (it) {
+    // 朗读跟随定位：本帖朗读中，每次楼层更迭自动滚动到正在读的楼层。
+    // collectAsStateWithLifecycle 在后台不更新，回前台收到最新值时正好完成「切回来直接定位」。
+    val readAloudFollow =
+        viewModel.readAloud.state.collectAsStateWithLifecycle().value?.takeIf { it.threadId == threadId }
+    val followFloor = readAloudFollow?.currentFloor
+    val latestStateForFollow by rememberUpdatedState(state)
+    LaunchedEffect(followFloor) {
+        if (followFloor != null && followFloor > 0) {
+            val st = latestStateForFollow
+            val allPosts = listOfNotNull(st.firstPost) + st.data
+            val index = allPosts.indexOfFirst { p -> p.floor == followFloor }
+            if (index >= 0) {
+                val nonDataItems = if (st.pageData.hasPrevious) 3 else 2
+                lazyListState.scrollToItem(nonDataItems + index)
+            }
+        }
+    }
+
+    viewModel.uiEvent.collectUiEventWithLifecycle {        val message = when (it) {
             is CommonUiEvent.Toast -> it.message.toString()
 
             is CommonUiEvent.NavigateUp -> navigator.navigateUp()
@@ -712,6 +732,14 @@ fun ThreadPage(
                     val index = allPosts.indexOfFirst { p -> p.id == it.postId }
                     if (index >= 1) {
                         lazyListState.scrollToItem(nonDataItems + index)
+                        if (it.page == 0) {
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.local_backup_resume_toast),
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        }
+                        Unit
                     } else {
                         lazyListState.scrollToItem(1)
                     }
@@ -722,6 +750,17 @@ fun ThreadPage(
                     val index = if (state.sortType != ThreadSortType.BY_DESC) 1 else 2 + state.data.size
                     lazyListState.animateScrollToItem(index)
                 }
+            }
+
+            is ThreadUiEvent.JumpToPost -> {
+                // 定位到指定楼层（按月跳转等）
+                val nonDataItems = if (state.pageData.hasPrevious) 3 else 2
+                val allPosts = listOfNotNull(state.firstPost) + state.data
+                val index = allPosts.indexOfFirst { p -> p.id == it.postId }
+                if (index >= 0) {
+                    lazyListState.scrollToItem(nonDataItems + index)
+                }
+                Unit
             }
 
             is ThreadUiEvent.ToReplyDestination -> navigator.navigateDebounced(it.direction)
@@ -782,8 +821,33 @@ fun ThreadPage(
         },
         title = { Text(text = stringResource(id = R.string.title_jump_page)) },
         content = {
-            with(state.pageData) {
-                Text(text = stringResource(R.string.tip_jump_page, current, total))
+            Column {
+                with(state.pageData) {
+                    Text(text = stringResource(R.string.tip_jump_page, current, total))
+                }
+                // 按月份跳转：列出已加载楼层的月份，点击定位到该月第一楼
+                val months = remember(state.data) { viewModel.availableMonths() }
+                if (months.isNotEmpty()) {
+                    Text(
+                        text = stringResource(R.string.jump_by_month),
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+                    )
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        months.forEach { month ->
+                            AssistChip(
+                                onClick = {
+                                    viewModel.jumpToMonth(month)
+                                    jumpToPageDialogState.show = false
+                                },
+                                label = { Text(month) },
+                            )
+                        }
+                    }
+                }
             }
         }
     )

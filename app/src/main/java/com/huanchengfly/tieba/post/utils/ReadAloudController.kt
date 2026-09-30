@@ -15,8 +15,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.util.Locale
 
-/** 一条待朗读的内容（楼层号 + 文本） */
-data class ReadAloudItem(val floor: Int, val text: String)
+/** 一条待朗读的内容（楼层号 + 文本 + 发帖时间） */
+data class ReadAloudItem(val floor: Int, val text: String, val time: Long = 0)
 
 /** 朗读前清洗文本：去掉贴吧表情码 #(...) 与 [图片] 占位 */
 fun String.sanitizeForTts(): String =
