@@ -104,10 +104,8 @@ class ThreadViewModel @Inject constructor(
 
     private var from: String = params.from?.tag ?: ""
 
-    /** 楼主朗读（TTS）：在线页与离线页共用同一控制器 */
-    val readAloud = ReadAloudController(context, viewModelScope) { message ->
-        sendUiEvent(CommonUiEvent.Toast(message))
-    }
+    /** 朗读（TTS）：应用级单例，退出页面朗读与媒体控件继续存活，重进本帖自动恢复朗读条 */
+    val readAloud = ReadAloudController.getInstance(context)
 
     /** 非空 = 离线阅读本地备份：数据全部来自 Room，无网可用 */
     private val localBackupId: String? = params.localBackupId
@@ -351,7 +349,7 @@ class ThreadViewModel @Inject constructor(
                         if (seeLzOnly) R.string.tts_no_lz_after_floor else R.string.tts_no_more_content
                     )
                 }
-                readAloud.start(items, title = state.thread?.title)
+                readAloud.start(items, title = state.thread?.title, threadId = threadId)
             }.onFailure {
                 sendUiEvent(CommonUiEvent.Toast(it.message ?: context.getString(R.string.local_backup_tts_unavailable)))
             }
@@ -971,7 +969,7 @@ class ThreadViewModel @Inject constructor(
     )
 
     override fun onCleared() {
-        readAloud.shutdown()
+        // 朗读控制器是应用级单例：页面销毁不停朗读、不撤媒体控件（跨页面/重进恢复）
         super.onCleared()
     }
 

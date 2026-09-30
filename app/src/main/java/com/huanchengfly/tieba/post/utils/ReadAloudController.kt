@@ -44,6 +44,8 @@ class ReadAloudController(
         val totalFloors: Int,
         /** 已加载的最大楼层号，进度条按 currentFloor/maxFloor 显示 */
         val maxFloor: Int = currentFloor,
+        /** 正在朗读的帖子 id，用于页面匹配显示朗读条 */
+        val threadId: Long = 0,
         /** 定时停止的时间点（epoch ms），0 = 未设定 */
         val timerEndAt: Long = 0L,
         /** true = 已暂停（保留进度，可继续） */
@@ -55,6 +57,7 @@ class ReadAloudController(
 
     private var items: List<ReadAloudItem> = emptyList()
     private var pendingIndex = -1
+    private var pendingThreadId: Long = 0
     private var currentTitle: String? = null
     private var tts: TextToSpeech? = null
     private var ttsReady = false
@@ -74,15 +77,33 @@ class ReadAloudController(
         )
     }
 
-    private companion object {
+    companion object {
         const val TAG = "ReadAloudController"
+
+        /**
+         * 应用级单例：朗读与媒体控件不随帖子页销毁而中断，
+         * 重新进入同一帖子时朗读条自动恢复。
+         */
+        @Volatile
+        private var instance: ReadAloudController? = null
+
+        fun getInstance(context: Context): ReadAloudController =
+            instance ?: synchronized(this) {
+                instance ?: ReadAloudController(
+                    context = context.applicationContext,
+                    scope = CoroutineScope(kotlinx.coroutines.Dispatchers.Main.immediate + kotlinx.coroutines.SupervisorJob()),
+                ) { msg ->
+                    android.widget.Toast.makeText(context.applicationContext, msg, android.widget.Toast.LENGTH_SHORT).show()
+                }.also { instance = it }
+            }
     }
 
     /** 从 [startIndex] 开始朗读（长按哪层就从哪层开始） */
-    fun start(newItems: List<ReadAloudItem>, startIndex: Int = 0, title: String? = null) {
+    fun start(newItems: List<ReadAloudItem>, startIndex: Int = 0, title: String? = null, threadId: Long = 0) {
         if (newItems.isEmpty()) return
         items = newItems
         currentTitle = title
+        pendingThreadId = threadId
         speakAt(startIndex.coerceIn(0, newItems.lastIndex))
     }
 
@@ -172,7 +193,7 @@ class ReadAloudController(
         val safeIndex = index.coerceIn(0, items.lastIndex)
         pendingIndex = safeIndex
         val item = items[safeIndex]
-        _state.value = (_state.value ?: State(safeIndex, item.floor, items.size, items.maxOf { it.floor }))
+        _state.value = (_state.value ?: State(safeIndex, item.floor, items.size, items.maxOf { it.floor }, pendingThreadId))
             .copy(index = safeIndex, currentFloor = item.floor, totalFloors = items.size, paused = false)
         runCatching { tts?.stop() }
         notifier.update(_state.value!!.currentFloor, _state.value!!.totalFloors, paused = false, threadTitle = currentTitle)

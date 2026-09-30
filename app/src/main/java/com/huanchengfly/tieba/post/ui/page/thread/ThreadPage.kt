@@ -920,7 +920,9 @@ fun ThreadPage(
             },
             bottomBar = {
                 // 朗读条与评论工具栏共存：朗读进行中时叠加显示在评论栏上方
+                // 朗读跨页面存活：仅当正在朗读本帖时显示朗读条（其他帖子/通知栏媒体控件不受影响）
                 val readAloud = viewModel.readAloud.state.collectAsStateWithLifecycle().value
+                    ?.takeIf { it.threadId == threadId }
                 Column(modifier = Modifier.fillMaxWidth()) {
                     if (readAloud != null) {
                         Box(
