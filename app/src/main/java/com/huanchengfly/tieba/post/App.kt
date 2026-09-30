@@ -20,6 +20,7 @@ import androidx.work.Configuration
 import androidx.work.WorkManager
 import coil3.SingletonImageLoader
 import com.huanchengfly.tieba.post.activities.CrashActivity
+import com.huanchengfly.tieba.post.api.retrofit.RetrofitTiebaApi
 import com.huanchengfly.tieba.post.components.ConfigInitializer
 import com.huanchengfly.tieba.post.components.coil.TbImageLoaderFactory
 import com.huanchengfly.tieba.post.di.RepositoryEntryPoint
@@ -113,6 +114,9 @@ class App : Application(), Configuration.Provider {
                 )
             }
         }
+
+        // 启动即预热看帖接口连接（DNS+TLS 进共享连接池），进帖子免握手等待
+        RetrofitTiebaApi.warmUpConnection()
 
         AppBackgroundScope.launch {
             delay(3000)

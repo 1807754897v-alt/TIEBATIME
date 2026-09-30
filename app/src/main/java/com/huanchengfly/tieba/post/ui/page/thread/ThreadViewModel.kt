@@ -389,7 +389,7 @@ class ThreadViewModel @Inject constructor(
         }
     }
 
-    fun requestLoadFirstPage() {
+    fun requestLoadFirstPage(silent: Boolean = false, fallbackSortType: Int? = null) {
         if (isOfflineBackup) {
             _uiState.update { st ->
                 st.copy(data = allOfflineFloors(st))
@@ -399,30 +399,48 @@ class ThreadViewModel @Inject constructor(
         }
         if (isRefreshing) return // Check refreshing
 
-        val oldState = _uiState.updateAndGet { it.copy(isRefreshing = true, error = null) }
+        // 静默模式（切序）：保持现有内容展示，不触发全屏 loading
+        val oldState = _uiState.updateAndGet {
+            it.copy(
+                isRefreshing = if (silent) it.isRefreshing else true,
+                error = if (silent) it.error else null,
+            )
+        }
         launchInVM {
-            val sortType = oldState.sortType
-            val isAscSorting = sortType == ThreadSortType.BY_ASC
-            val response = threadRepo.pbPage(threadId, 0, 0, forumId, oldState.seeLz, sortType)
-            val pageData = response.page.run {
-                mapToUiModel(
-                    previous = total_page,
-                    current = if (isAscSorting) current_page else total_page,
-                    nextPagePostId = if (isAscSorting) {
-                        response.nextPagePostId
-                    } else {
-                        response.posts.lastOrNull()?.id ?: 0
+            runCatching {
+                val sortType = oldState.sortType
+                val isAscSorting = sortType == ThreadSortType.BY_ASC
+                val response = threadRepo.pbPage(threadId, 0, 0, forumId, oldState.seeLz, sortType)
+                val pageData = response.page.run {
+                    mapToUiModel(
+                        previous = total_page,
+                        current = if (isAscSorting) current_page else total_page,
+                        nextPagePostId = if (isAscSorting) {
+                            response.nextPagePostId
+                        } else {
+                            response.posts.lastOrNull()?.id ?: 0
+                        }
+                    )
+                }
+                _uiState.update {
+                    it.updateStateFrom(response).copy(firstPost = it.firstPost, pageData = pageData)
+                }
+                // Scroll LazyList based on current sort type
+                if (isAscSorting) {
+                    emitUiEvent(ThreadUiEvent.ScrollToFirstReply)
+                } else {
+                    emitUiEvent(ThreadUiEvent.ScrollToLatestReply)
+                }
+            }.onFailure { e ->
+                if (silent && fallbackSortType != null) {
+                    // 静默切序失败：回退排序并提示，不打断当前阅读
+                    _uiState.update {
+                        it.copy(sortType = fallbackSortType, isRefreshing = false, error = null)
                     }
-                )
-            }
-            _uiState.update {
-                it.updateStateFrom(response).copy(firstPost = it.firstPost, pageData = pageData)
-            }
-            // Scroll LazyList based on current sort type
-            if (isAscSorting) {
-                emitUiEvent(ThreadUiEvent.ScrollToFirstReply)
-            } else {
-                emitUiEvent(ThreadUiEvent.ScrollToLatestReply)
+                    sendUiEvent(CommonUiEvent.ToastError(e))
+                } else {
+                    throw e
+                }
             }
         }
     }
@@ -815,8 +833,10 @@ class ThreadViewModel @Inject constructor(
             }
             return
         }
+        // 在线：对齐原版体验，切序不整页重载，静默请求后原地替换
+        val oldSortType = currentState.sortType
         _uiState.update { it.copy(sortType = sortType) }
-        requestLoadFirstPage()
+        requestLoadFirstPage(silent = true, fallbackSortType = oldSortType)
     }
 
     fun onSaveHistory(lastVisiblePost: PostData?) = launchInVM {

@@ -24,7 +24,7 @@ import java.util.concurrent.TimeUnit
 
 object UpdateManager {
 
-    private const val REPO = "neveragain233/TiebaLite"
+    private const val REPO = "1807754897v-alt/TIEBATIME"
     private const val GITHUB_LATEST_RELEASE_URL =
         "https://api.github.com/repos/$REPO/releases/latest"
     internal const val APK_MIME_TYPE = "application/vnd.android.package-archive"

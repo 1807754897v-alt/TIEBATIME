@@ -38,10 +38,12 @@ import com.huanchengfly.tieba.post.utils.CuidUtils
 import com.huanchengfly.tieba.post.utils.DeviceUtils
 import com.huanchengfly.tieba.post.utils.MobileInfoUtil
 import com.huanchengfly.tieba.post.utils.UIDUtil
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import okhttp3.ConnectionPool
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
+import okhttp3.Request
 import retrofit2.Retrofit
 import retrofit2.converter.wire.WireConverterFactory
 import java.text.SimpleDateFormat
@@ -440,4 +442,23 @@ object RetrofitTiebaApi {
         }.build())
         .build()
         .create(T::class.java)
+
+    /**
+     * 预热到看帖主接口（tiebac.baidu.com）的连接：提前完成 DNS + TCP + TLS 握手，
+     * 连接进入共享 [connectionPool]（5 分钟保活），之后进帖子页请求直接复用热连接，
+     * 省掉 1~2 个往返的握手延迟。App 启动时调用。
+     */
+    fun warmUpConnection() {
+        App.AppBackgroundScope.launch {
+            runCatching {
+                OkHttpClient.Builder()
+                    .connectionPool(connectionPool)
+                    .connectTimeout(CONNECT_TIMEOUT, TimeUnit.SECONDS)
+                    .build()
+                    .newCall(Request.Builder().url("https://tiebac.baidu.com/").head().build())
+                    .execute()
+                    .close()
+            }
+        }
+    }
 }
