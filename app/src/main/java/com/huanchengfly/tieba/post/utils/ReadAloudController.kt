@@ -42,6 +42,8 @@ class ReadAloudController(
         val index: Int,
         val currentFloor: Int,
         val totalFloors: Int,
+        /** 已加载的最大楼层号，进度条按 currentFloor/maxFloor 显示 */
+        val maxFloor: Int = currentFloor,
         /** 定时停止的时间点（epoch ms），0 = 未设定 */
         val timerEndAt: Long = 0L,
         /** true = 已暂停（保留进度，可继续） */
@@ -170,7 +172,7 @@ class ReadAloudController(
         val safeIndex = index.coerceIn(0, items.lastIndex)
         pendingIndex = safeIndex
         val item = items[safeIndex]
-        _state.value = (_state.value ?: State(safeIndex, item.floor, items.size))
+        _state.value = (_state.value ?: State(safeIndex, item.floor, items.size, items.maxOf { it.floor }))
             .copy(index = safeIndex, currentFloor = item.floor, totalFloors = items.size, paused = false)
         runCatching { tts?.stop() }
         notifier.update(_state.value!!.currentFloor, _state.value!!.totalFloors, paused = false, threadTitle = currentTitle)

@@ -35,14 +35,16 @@ android {
     compileSdk = libs.versions.compileSdk.get().toInt()
 
     defaultConfig {
-        applicationId = "com.huanchengfly.tieba.post"
+        // 独立包名：与原版 TiebaLite（com.huanchengfly.tieba.post）共存，避免同包名签名冲突。
+        // 代码 namespace 保持 com.huanchengfly.tieba.post 不变。
+        applicationId = "com.zy.tieba.time"
         minSdk = libs.versions.minSdk.get().toInt()
         //noinspection OldTargetApi
         targetSdk = libs.versions.targetSdk.get().toInt()
-        versionCode = 391061
-        versionName = "1.3.1"
+        versionCode = 391062
+        versionName = "1.3.2"
         // Configure custom runner to set up the Hilt test application
-        testInstrumentationRunner = "$applicationId.TbLiteTestRunner"
+        testInstrumentationRunner = "com.huanchengfly.tieba.post.TbLiteTestRunner"
         vectorDrawables {
             useSupportLibrary = true
         }

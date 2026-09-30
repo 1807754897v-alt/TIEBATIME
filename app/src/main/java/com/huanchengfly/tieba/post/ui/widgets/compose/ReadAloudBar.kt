@@ -118,7 +118,7 @@ fun ReadAloudBar(
             }
             LinearProgressIndicator(
                 progress = {
-                    (state.index + 1f) / state.totalFloors.coerceAtLeast(1)
+                    state.currentFloor / state.maxFloor.coerceAtLeast(1).toFloat()
                 },
                 modifier = Modifier
                     .fillMaxWidth()

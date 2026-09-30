@@ -117,11 +117,6 @@ class AccountUtil private constructor(context: Context) {
         val database = TbLiteDatabase.getInstance(context)
         accountDao = database.accountDao()
         timeDao = database.timestampDao()
-        scope.launch {
-            currentAccount.collect { cachedAccount = it }
-        }
-        // 启动即预热，首个网络请求到来时缓存已就绪
-        scope.launch { UIDUtil.uUID }
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -133,6 +128,15 @@ class AccountUtil private constructor(context: Context) {
 
     val allAccounts: SharedFlow<List<Account>> = accountDao.observeAll()
         .shareInBackground()
+
+    init {
+        // 必须在 currentAccount 声明之后：跨线程读未完成初始化的字段会与构造竞态（NPE）
+        scope.launch {
+            currentAccount.collect { cachedAccount = it }
+        }
+        // 启动即预热，首个网络请求到来时缓存已就绪
+        scope.launch { UIDUtil.uUID }
+    }
 
     suspend fun updateSigningAccount(): Account {
         val account = currentAccount.first() ?: throw TiebaNotLoggedInException()

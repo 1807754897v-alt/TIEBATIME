@@ -16,9 +16,12 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.NonRestartableComposable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -31,19 +34,33 @@ import com.huanchengfly.tieba.post.R
 import com.huanchengfly.tieba.post.ui.common.theme.compose.onCase
 import com.huanchengfly.tieba.post.ui.widgets.compose.ErrorScreen
 import com.huanchengfly.tieba.post.ui.widgets.compose.TipScreen
+import kotlinx.coroutines.delay
+
+/**
+ * 加载占位延迟显示：快速加载（如缓存命中、网络良好）时不闪出动画，
+ * 加载持续超过阈值才出现纸飞机兜底。
+ */
+private const val LOADING_SCREEN_DELAY_MS = 400L
 
 val DefaultLoadingScreen: @Composable StateScreenScope.() -> Unit = {
-    val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.lottie_loading_paperplane))
-    Box(
-        modifier = Modifier.requiredWidthIn(max = 500.dp)
-    ) {
-        LottieAnimation(
-            composition = composition,
-            iterations = LottieConstants.IterateForever,
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(2f)
-        )
+    var show by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        delay(LOADING_SCREEN_DELAY_MS)
+        show = true
+    }
+    if (show) {
+        val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.lottie_loading_paperplane))
+        Box(
+            modifier = Modifier.requiredWidthIn(max = 500.dp)
+        ) {
+            LottieAnimation(
+                composition = composition,
+                iterations = LottieConstants.IterateForever,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(2f)
+            )
+        }
     }
 }
 
