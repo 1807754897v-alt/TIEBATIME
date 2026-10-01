@@ -349,10 +349,9 @@ class ThreadViewModel @Inject constructor(
                     .sortedBy { it.floor }
                     .filter { it.floor >= startFloor }
                 // 不播报楼号；月份更迭时播报一次「xxxx年x月」
-                val monthFmt = java.text.SimpleDateFormat("yyyy年M月", java.util.Locale.CHINA)
                 var lastMonth: String? = null
                 val items = base.map { p ->
-                    val month = if (p.time > 0) monthFmt.format(java.util.Date(p.time * 1000)) else null
+                    val month = if (p.time > 0) monthLabel(p.time) else null
                     val prefix = if (month != null && month != lastMonth) "$month。" else ""
                     lastMonth = month
                     ReadAloudItem(
@@ -373,9 +372,11 @@ class ThreadViewModel @Inject constructor(
         }
     }
 
-    /** 楼层时间 → 「yyyy年M月」标签 */
-    private fun monthLabel(time: Long): String =
-        java.text.SimpleDateFormat("yyyy年M月", java.util.Locale.CHINA).format(java.util.Date(time * 1000))
+    /** 楼层时间 → 「yyyy年M月」标签。数据源秒/毫秒混杂，按量级归一化 */
+    private fun monthLabel(time: Long): String {
+        val millis = if (time < 10_000_000_000L) time * 1000 else time
+        return java.text.SimpleDateFormat("yyyy年M月", java.util.Locale.CHINA).format(java.util.Date(millis))
+    }
 
     /** 当前已加载楼层的月份列表（升序去重），供按月跳转选择 */
     fun availableMonths(): List<String> {

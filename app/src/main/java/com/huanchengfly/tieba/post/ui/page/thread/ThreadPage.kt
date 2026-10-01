@@ -8,7 +8,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import android.widget.Toast
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.TextButton
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -809,7 +812,40 @@ fun ThreadPage(
         onCancel = viewModel::onDeleteCancelled
     )
 
+    // 小火箭二级菜单：先选跳页 or 按月份
+    val jumpMenuDialogState = rememberDialogState()
     val jumpToPageDialogState = rememberDialogState()
+    val jumpMonthDialogState = rememberDialogState()
+    if (jumpMenuDialogState.show) {
+        AlertDialog(
+            onDismissRequest = { jumpMenuDialogState.show = false },
+            title = { Text(text = stringResource(id = R.string.title_jump_page)) },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    TextButton(
+                        onClick = {
+                            jumpMenuDialogState.show = false
+                            jumpToPageDialogState.show = true
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text(text = stringResource(R.string.jump_by_page)) }
+                    TextButton(
+                        onClick = {
+                            jumpMenuDialogState.show = false
+                            jumpMonthDialogState.show = true
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text(text = stringResource(R.string.jump_by_month)) }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { jumpMenuDialogState.show = false }) {
+                    Text(text = stringResource(id = R.string.action_cancel))
+                }
+            },
+        )
+    }
     PromptDialog(
         onConfirm = {
             viewModel.requestLoad(it.toInt())
@@ -821,36 +857,41 @@ fun ThreadPage(
         },
         title = { Text(text = stringResource(id = R.string.title_jump_page)) },
         content = {
-            Column {
-                with(state.pageData) {
-                    Text(text = stringResource(R.string.tip_jump_page, current, total))
-                }
-                // 按月份跳转：列出已加载楼层的月份，点击定位到该月第一楼
-                val months = remember(state.data) { viewModel.availableMonths() }
-                if (months.isNotEmpty()) {
-                    Text(
-                        text = stringResource(R.string.jump_by_month),
-                        style = MaterialTheme.typography.labelLarge,
-                        modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
-                    )
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        months.forEach { month ->
-                            AssistChip(
-                                onClick = {
-                                    viewModel.jumpToMonth(month)
-                                    jumpToPageDialogState.show = false
-                                },
-                                label = { Text(month) },
-                            )
-                        }
-                    }
-                }
+            with(state.pageData) {
+                Text(text = stringResource(R.string.tip_jump_page, current, total))
             }
         }
     )
+    if (jumpMonthDialogState.show) {
+        val months = viewModel.availableMonths()
+        AlertDialog(
+            onDismissRequest = { jumpMonthDialogState.show = false },
+            title = { Text(text = stringResource(R.string.jump_by_month)) },
+            text = {
+                if (months.isEmpty()) {
+                    Text(text = stringResource(R.string.jump_month_empty))
+                } else {
+                    LazyColumn {
+                        items(months.size) { i ->
+                            TextButton(
+                                onClick = {
+                                    viewModel.jumpToMonth(months[i])
+                                    jumpMonthDialogState.show = false
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) { Text(text = months[i]) }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { jumpMonthDialogState.show = false }) {
+                    Text(text = stringResource(id = R.string.action_cancel))
+                }
+            },
+        )
+    }
 
     val onRefreshClicked: () -> Unit = {
         viewModel.requestLoad(0, postId)
@@ -1114,7 +1155,7 @@ fun ThreadPage(
                             user = state.user,
                             onClickReply = viewModel::onReplyThread.takeUnless { viewModel.hideReply },
                             onClickMore =  openBottomSheet,
-                            onJumpPage = jumpToPageDialogState::show,
+                            onJumpPage = jumpMenuDialogState::show,
                             like = state.thread?.like ?: LikeZero,
                             onLiked = viewModel::onThreadLikeClicked,
                             scrollBehavior = toolbarScrollBehavior
