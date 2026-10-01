@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
@@ -871,7 +872,8 @@ fun ThreadPage(
                 if (months.isEmpty()) {
                     Text(text = stringResource(R.string.jump_month_empty))
                 } else {
-                    LazyColumn {
+                    // 限高保证横屏（对话框矮）时列表仍可滚动
+                    LazyColumn(modifier = Modifier.heightIn(max = 320.dp)) {
                         items(months.size) { i ->
                             TextButton(
                                 onClick = {
