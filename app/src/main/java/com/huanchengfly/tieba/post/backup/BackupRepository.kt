@@ -9,6 +9,8 @@ import com.huanchengfly.tieba.post.models.database.LocalBackupSubPost
 import com.huanchengfly.tieba.post.models.database.dao.LocalBackupDao
 import com.huanchengfly.tieba.post.repository.PbPageRepository
 import com.huanchengfly.tieba.post.ui.common.PicContentRender
+import com.huanchengfly.tieba.post.ui.common.PbContentRender
+import com.huanchengfly.tieba.post.ui.common.VoiceContentRender
 import com.huanchengfly.tieba.post.ui.page.thread.ThreadSortType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -252,7 +254,16 @@ class BackupRepository @Inject constructor(
                             authorName = post.author.name,
                             postTime = post.time,
                             ipLocation = post.author.ip.takeIf { it.isNotBlank() },
-                            content = post.plainText,
+                            // plainText 的语音占位 [语音] 按出现顺序对应 contentRenders 中的
+                            // VoiceContentRender，替换成可还原标记 [语音:md5:秒]，离线可重新播放
+                            content = run {
+                                val voices = post.contentRenders.filterIsInstance<VoiceContentRender>()
+                                var vi = 0
+                                Regex(Regex.escape(PbContentRender.MEDIA_VOICE)).replace(post.plainText ?: "") {
+                                    voices.getOrNull(vi++)?.let { v -> "[语音:${v.voiceMd5}:${v.duration}]" }
+                                        ?: PbContentRender.MEDIA_VOICE
+                                }
+                            },
                             isLz = post.author.isLz,
                             imageUrls = post.contentRenders
                                 .filterIsInstance<PicContentRender>()

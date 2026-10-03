@@ -730,12 +730,14 @@ fun ThreadPage(
 
             is ThreadUiEvent.LoadSuccess -> {
                 if (viewModel.isOfflineBackup && it.postId != 0L) {
-                    // 离线阅读：精确恢复到上次阅读的楼层
+                    // 离线阅读：精确恢复到上次阅读的楼层。
+                    // 保存的是「屏幕中间」的楼层，恢复时也把它放回屏幕中间，避免两楼左右的偏差
                     val nonDataItems = if (state.pageData.hasPrevious) 3 else 2
                     val allPosts = listOfNotNull(state.firstPost) + state.data
                     val index = allPosts.indexOfFirst { p -> p.id == it.postId }
                     if (index >= 1) {
-                        lazyListState.scrollToItem(nonDataItems + index)
+                        val centerOffset = -lazyListState.layoutInfo.viewportEndOffset / 2
+                        lazyListState.scrollToItem(nonDataItems + index, centerOffset)
                         if (it.page == 0) {
                             Toast.makeText(
                                 context,

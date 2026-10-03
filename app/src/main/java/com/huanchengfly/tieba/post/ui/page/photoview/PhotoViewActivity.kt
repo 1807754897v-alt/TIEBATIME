@@ -1,8 +1,13 @@
 package com.huanchengfly.tieba.post.ui.page.photoview
 
+import android.content.ContentValues
 import android.content.Context
 import android.graphics.Color
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.provider.MediaStore
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
@@ -40,7 +45,9 @@ import com.huanchengfly.tieba.post.utils.DisplayUtil.doOnApplyWindowInsets
 import com.huanchengfly.tieba.post.utils.ImageUtil
 import com.huanchengfly.tieba.post.utils.extension.getParcelableExtraCompat
 import com.huanchengfly.tieba.post.utils.extension.toShareIntent
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import java.io.File
 
 class PhotoViewActivity : AppCompatActivity(), OverlayCustomizer, ViewerCallback {
 
@@ -137,7 +144,15 @@ class PhotoViewActivity : AppCompatActivity(), OverlayCustomizer, ViewerCallback
         when (item.itemId) {
             R.id.menu_share -> onShareImage()
 
-            R.id.menu_download -> ImageUtil.download(this, url = getCurrentItem()?.originUrl)
+            R.id.menu_download -> {
+                val url = getCurrentItem()?.originUrl
+                if (url != null && url.startsWith("file://")) {
+                    // 离线备份图片：本地文件直接复制进相册
+                    saveLocalImageToGallery(url)
+                } else {
+                    ImageUtil.download(this, url = url)
+                }
+            }
 
             R.id.menu_rotate -> {
                 val (rot, mirror) = pageTransforms[currentPage] ?: (0f to false)
@@ -186,6 +201,47 @@ class PhotoViewActivity : AppCompatActivity(), OverlayCustomizer, ViewerCallback
                 .onFailure {
                     toastShort(it.getErrorMessage())
                 }
+        }
+    }
+
+    /** 把离线备份的本地图片复制到相册 Pictures/TieBaTime */
+    private fun saveLocalImageToGallery(fileUrl: String) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            runCatching {
+                val src = File(Uri.parse(fileUrl).path!!)
+                val mime = when (src.extension.lowercase()) {
+                    "png" -> "image/png"
+                    "webp" -> "image/webp"
+                    "gif" -> "image/gif"
+                    else -> "image/jpeg"
+                }
+                val values = ContentValues().apply {
+                    put(
+                        MediaStore.Images.Media.DISPLAY_NAME,
+                        "TieBaTime_${System.currentTimeMillis()}.${src.extension.ifBlank { "jpg" }}"
+                    )
+                    put(MediaStore.Images.Media.MIME_TYPE, mime)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/TieBaTime")
+                        put(MediaStore.Images.Media.IS_PENDING, 1)
+                    }
+                }
+                val resolver = contentResolver
+                val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+                    ?: throw IllegalStateException("MediaStore insert failed")
+                resolver.openOutputStream(uri)!!.use { out ->
+                    src.inputStream().use { it.copyTo(out) }
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    values.clear()
+                    values.put(MediaStore.Images.Media.IS_PENDING, 0)
+                    resolver.update(uri, values, null, null)
+                }
+            }.onSuccess {
+                toastShort(R.string.toast_picture_saved)
+            }.onFailure {
+                toastShort(R.string.toast_picture_save_failed)
+            }
         }
     }
 

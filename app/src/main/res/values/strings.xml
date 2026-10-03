@@ -119,6 +119,8 @@
     <string name="jump_by_page">跳页</string>
     <string name="jump_month_empty">暂无已加载的月份</string>
     <string name="local_backup_resume_toast">已恢复至上次阅读位置</string>
+    <string name="toast_picture_saved">已保存到相册 Pictures/TieBaTime</string>
+    <string name="toast_picture_save_failed">保存失败</string>
     <string name="tts_prev_floor">上一楼</string>
     <string name="tts_next_floor">下一楼</string>
     <string name="tts_timer">定时停止（关闭/15/30/60 分钟）</string>
