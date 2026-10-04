@@ -169,12 +169,15 @@ value class TextContentRender(val value: AnnotatedString) : PbContentRender {
 @Immutable
 class VoiceContentRender(
     val voiceMd5: String,
-    val duration: Int
+    val duration: Int,
+    /** 离线备份的本地语音文件路径；空 = 在线流播放 */
+    val localPath: String? = null,
 ) : PbContentRender {
     @Composable
     override fun Render() {
         val voiceUrl = remember {
-            "https://tiebac.baidu.com/c/p/voice?voice_md5=$voiceMd5&play_from=pb_voice_play"
+            localPath?.let { "file://$it" }
+                ?: "https://tiebac.baidu.com/c/p/voice?voice_md5=$voiceMd5&play_from=pb_voice_play"
         }
         VoicePlayer(url = voiceUrl, duration = duration)
     }

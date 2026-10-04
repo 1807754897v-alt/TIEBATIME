@@ -423,6 +423,43 @@ class BackupRepository @Inject constructor(
                         )
                     }
                 }
+
+                // 语音文件存档（originalUrl = voice:<md5>，复用图片表结构）
+                val voiceRegex = Regex("\\[语音:([0-9a-zA-Z]+):(\\d+)]")
+                val allVoices = crawledFloors.flatMap { f ->
+                    voiceRegex.findAll(f.content).map { m -> m.groupValues[1] to f.floorNumber }
+                }.distinctBy { it.first }
+                if (allVoices.isNotEmpty()) {
+                    onProgress?.invoke(BackupProgress(BackupProgress.Stage.IMAGES, message = "下载语音…"))
+                    val voiceDir = backupPaths.voiceDir(exportKey)
+                    allVoices.forEachIndexed { index, (md5, floorNumber) ->
+                        val downloaded = imageCompressor.downloadVoice(
+                            url = "https://tiebac.baidu.com/c/p/voice?voice_md5=$md5&play_from=pb_voice_play",
+                            destFile = File(voiceDir, "voice_$md5"),
+                        )
+                        if (downloaded != null) {
+                            imageCount++
+                            imageBytes += downloaded.length()
+                            pendingImages.add(
+                                LocalBackupImage(
+                                    backupId = backupId,
+                                    threadId = threadId,
+                                    floorNumber = floorNumber,
+                                    originalUrl = "voice:$md5",
+                                    localPath = downloaded.absolutePath,
+                                    width = null,
+                                    height = null,
+                                    bytes = downloaded.length(),
+                                    compressed = false,
+                                    compressPolicy = null,
+                                )
+                            )
+                        } else {
+                            failedImages++
+                        }
+                        if (pendingImages.size >= 20) flushImages()
+                    }
+                }
                 flushImages()
             }
 

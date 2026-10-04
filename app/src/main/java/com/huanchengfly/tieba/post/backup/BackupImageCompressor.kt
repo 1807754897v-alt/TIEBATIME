@@ -33,6 +33,25 @@ class BackupImageCompressor @Inject constructor() {
         val policy: String,
     )
 
+    /** 下载语音文件原样存档（不压缩），失败返回 null */
+    suspend fun downloadVoice(url: String, destFile: File): File? = withContext(Dispatchers.IO) {
+        try {
+            val request = Request.Builder().url(url).build()
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    Log.w(TAG, "voice http fail ${response.code} $url")
+                    return@withContext null
+                }
+                val body = response.body?.bytes() ?: return@withContext null
+                destFile.writeBytes(body)
+                destFile
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "voice download fail $url", e)
+            null
+        }
+    }
+
     suspend fun downloadAndCompress(
         url: String,
         destDir: File,

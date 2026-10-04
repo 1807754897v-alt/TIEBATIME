@@ -31,8 +31,14 @@ class BackupPaths @Inject constructor(
     val avatarsDir: File
         get() = File(root, "avatars").apply { mkdirs() }
 
+    val voicesDir: File
+        get() = File(root, "voices").apply { mkdirs() }
+
     fun imageDir(exportKey: String): File =
         File(imagesDir, exportKey).apply { mkdirs() }
+
+    fun voiceDir(exportKey: String): File =
+        File(voicesDir, exportKey).apply { mkdirs() }
 
     fun markdownFile(exportKey: String): File =
         File(markdownsDir, "$exportKey.md")
@@ -44,6 +50,7 @@ class BackupPaths @Inject constructor(
         markdownFile(exportKey).delete()
         jsonFile(exportKey).delete()
         imageDir(exportKey).deleteRecursively()
+        voiceDir(exportKey).deleteRecursively()
     }
 
     fun dirSizeBytes(file: File): Long {

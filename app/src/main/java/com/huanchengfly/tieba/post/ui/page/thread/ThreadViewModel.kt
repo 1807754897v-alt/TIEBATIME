@@ -1052,7 +1052,9 @@ class ThreadViewModel @Inject constructor(
                 voiceRegex.findAll(inlined).forEach { m ->
                     val before = inlined.substring(last, m.range.first).trim('\n', ' ')
                     if (before.isNotBlank()) add(TextContentRender(before.emoticonString))
-                    add(VoiceContentRender(m.groupValues[1], m.groupValues[2].toInt()))
+                    // 优先播放备份存档的本地语音文件，缺失时回退在线流
+                    val voiceLocal = images.firstOrNull { it.originalUrl == "voice:${m.groupValues[1]}" }
+                    add(VoiceContentRender(m.groupValues[1], m.groupValues[2].toInt(), voiceLocal?.localPath))
                     last = m.range.last + 1
                 }
                 val tail = inlined.substring(last).trim('\n', ' ')
