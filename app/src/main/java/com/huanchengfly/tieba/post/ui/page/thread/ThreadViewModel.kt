@@ -385,11 +385,86 @@ class ThreadViewModel @Inject constructor(
         return all.filter { it.time > 0 }.map { monthLabel(it.time) }.distinct()
     }
 
-    /** 按月跳转：定位到该月第一个已加载的楼层 */
+    /** 按月跳转：离线在已加载楼层中精确跳；在线按页二分定位目标月份后加载跳转 */
     fun jumpToMonth(label: String) {
-        val all = listOfNotNull(currentState.firstPost) + currentState.data
-        val target = all.firstOrNull { it.time > 0 && monthLabel(it.time) == label } ?: return
-        sendUiEvent(ThreadUiEvent.JumpToPost(target.id))
+        val (year, month) = parseMonthLabel(label) ?: return
+        val cal = java.util.Calendar.getInstance()
+        cal.clear()
+        cal.set(year, month - 1, 1, 0, 0, 0)
+        val monthStart = cal.timeInMillis / 1000
+        cal.add(java.util.Calendar.MONTH, 1)
+        val monthEnd = cal.timeInMillis / 1000
+
+        if (isOfflineBackup) {
+            val all = listOfNotNull(currentState.firstPost) + currentState.data
+            val target = all.firstOrNull { it.time > 0 && it.time in monthStart until monthEnd } ?: return
+            sendUiEvent(ThreadUiEvent.JumpToPost(target.id))
+            return
+        }
+
+        launchJobInVM {
+            runCatching {
+                sendUiEvent(CommonUiEvent.Toast(context.getString(R.string.jump_month_locating, label)))
+                val seeLz = currentState.seeLz
+                var lo = 1L
+                var hi = currentState.pageData.total.toLong().coerceAtLeast(1L)
+                var hitPage = -1
+                var hitPostId = 0L
+                // 页内楼层时间按正序单调，二分找包含目标月的页（约 log2(页数) 次请求）
+                while (lo <= hi) {
+                    val mid = ((lo + hi) / 2).toInt()
+                    val resp = threadRepo.pbPage(threadId, mid, 0, forumId, seeLz, ThreadSortType.BY_ASC)
+                    val posts = resp.posts.sortedBy { it.floor }
+                    if (posts.isEmpty()) break
+                    val first = posts.first().time.toLong()
+                    val last = posts.last().time.toLong()
+                    when {
+                        last < monthStart -> lo = mid + 1L
+                        first > monthEnd -> hi = mid - 1L
+                        else -> {
+                            hitPage = mid
+                            hitPostId = posts.firstOrNull { it.time.toLong() in monthStart until monthEnd }?.id ?: 0L
+                            break
+                        }
+                    }
+                }
+                if (hitPage == -1) {
+                    sendUiEvent(CommonUiEvent.Toast(context.getString(R.string.jump_month_not_found, label)))
+                    return@launchJobInVM
+                }
+                // 加载目标页（正序）并定位到该月第一楼
+                val response = threadRepo.pbPage(threadId, hitPage, 0, forumId, seeLz, ThreadSortType.BY_ASC)
+                val pageData = response.page.let {
+                    it.mapToUiModel(
+                        previous = it.current_page,
+                        nextPagePostId = response.nextPagePostId,
+                        hasPrevious = it.has_prev != 0,
+                    )
+                }
+                _uiState.update {
+                    it.updateStateFrom(response)
+                        .copy(sortType = ThreadSortType.BY_ASC, pageData = pageData)
+                }
+                if (hitPostId != 0L) {
+                    sendUiEvent(ThreadUiEvent.JumpToPost(hitPostId))
+                } else {
+                    sendUiEvent(ThreadUiEvent.LoadSuccess(hitPage, 0))
+                }
+            }.onFailure {
+                sendUiEvent(CommonUiEvent.ToastError(it))
+            }
+        }
+    }
+
+    /** 「2023年5月」/「2023-5」→ (2023, 5) */
+    fun parseMonthLabel(label: String): Pair<Int, Int>? {
+        val m = Regex("(\\d{4})年(\\d{1,2})月").find(label.trim())
+            ?: Regex("(\\d{4})-(\\d{1,2})").find(label.trim())
+            ?: return null
+        val (y, mo) = m.destructured
+        val month = mo.toInt()
+        if (month !in 1..12) return null
+        return y.toInt() to month
     }
 
     fun requestLoad(page: Int = 1, postId: Long, scrollToReply: Boolean = true) {

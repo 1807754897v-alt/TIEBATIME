@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextButton
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -867,23 +868,49 @@ fun ThreadPage(
     )
     if (jumpMonthDialogState.show) {
         val months = viewModel.availableMonths()
+        var monthInput by rememberSaveable { mutableStateOf("") }
+        val inputValid = viewModel.parseMonthLabel(monthInput) != null
         AlertDialog(
             onDismissRequest = { jumpMonthDialogState.show = false },
             title = { Text(text = stringResource(R.string.jump_by_month)) },
             text = {
-                if (months.isEmpty()) {
-                    Text(text = stringResource(R.string.jump_month_empty))
-                } else {
-                    // 限高保证横屏（对话框矮）时列表仍可滚动
-                    LazyColumn(modifier = Modifier.heightIn(max = 320.dp)) {
-                        items(months.size) { i ->
+                Column {
+                    OutlinedTextField(
+                        value = monthInput,
+                        onValueChange = { monthInput = it },
+                        placeholder = { Text(text = stringResource(R.string.jump_month_input_hint)) },
+                        singleLine = true,
+                        isError = monthInput.isNotEmpty() && !inputValid,
+                        trailingIcon = {
                             TextButton(
                                 onClick = {
-                                    viewModel.jumpToMonth(months[i])
+                                    val label = viewModel.parseMonthLabel(monthInput)?.let { (y, m) -> "${y}年${m}月" } ?: return@TextButton
+                                    monthInput = ""
                                     jumpMonthDialogState.show = false
+                                    viewModel.jumpToMonth(label)
                                 },
-                                modifier = Modifier.fillMaxWidth(),
-                            ) { Text(text = months[i]) }
+                                enabled = inputValid,
+                            ) { Text(text = stringResource(id = R.string.action_confirm)) }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    if (months.isNotEmpty()) {
+                        Text(
+                            text = stringResource(R.string.jump_month_loaded),
+                            style = MaterialTheme.typography.labelMedium,
+                            modifier = Modifier.padding(top = 10.dp, bottom = 2.dp),
+                        )
+                        // 限高保证横屏（对话框矮）时列表仍可滚动
+                        LazyColumn(modifier = Modifier.heightIn(max = 320.dp)) {
+                            items(months.size) { i ->
+                                TextButton(
+                                    onClick = {
+                                        viewModel.jumpToMonth(months[i])
+                                        jumpMonthDialogState.show = false
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) { Text(text = months[i]) }
+                            }
                         }
                     }
                 }
