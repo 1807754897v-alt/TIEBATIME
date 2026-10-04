@@ -152,7 +152,9 @@ val List<PbContent>.plainText: String?
 
                 10 -> PbContentRender.MEDIA_VOICE
 
-                else -> it.text
+                // 未知类型（含非标准 type 的语音等）：只保留可识别的语音，其余丢弃，
+                // 与在线渲染（buildRenders 忽略未知类型）一致，避免原始数据当文本混入备份/朗读
+                else -> if (it.voiceMD5.isNotBlank()) PbContentRender.MEDIA_VOICE else ""
             }
             builder.append(text)
             if (i < lastIndex) builder.append('\n')
@@ -290,6 +292,13 @@ fun List<PbContent>.buildRenders(imageLoadType: Int): ImmutableList<PbContentRen
                             picId = ImageUtil.getPicId(it.src)
                         )
                     )
+                }
+
+                // 非 10 但带 voiceMD5 的段（新版语音等）也按语音渲染，其余未知类型忽略
+                else -> {
+                    if (it.voiceMD5.isNotBlank()) {
+                        renders.add(VoiceContentRender(it.voiceMD5, it.duringTime))
+                    }
                 }
             }
         }

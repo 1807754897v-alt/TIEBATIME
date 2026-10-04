@@ -396,8 +396,9 @@ class ThreadViewModel @Inject constructor(
         val monthEnd = cal.timeInMillis / 1000
 
         if (isOfflineBackup) {
+            // 离线楼层时间戳单位不定（秒/毫秒），用与展示一致的 monthLabel 匹配
             val all = listOfNotNull(currentState.firstPost) + currentState.data
-            val target = all.firstOrNull { it.time > 0 && it.time in monthStart until monthEnd } ?: return
+            val target = all.firstOrNull { it.time > 0 && monthLabel(it.time) == label } ?: return
             sendUiEvent(ThreadUiEvent.JumpToPost(target.id))
             return
         }
