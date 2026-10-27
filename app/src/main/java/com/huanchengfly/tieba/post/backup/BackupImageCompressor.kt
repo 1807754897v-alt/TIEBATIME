@@ -33,22 +33,67 @@ class BackupImageCompressor @Inject constructor() {
         val policy: String,
     )
 
-    /** 下载语音文件原样存档（不压缩），失败返回 null */
-    suspend fun downloadVoice(url: String, destFile: File): File? = withContext(Dispatchers.IO) {
+    /**
+     * 下载语音原样存档（不压缩）。
+     *
+     * Baidu 对失效 md5 一样回 200 + 空 body + text/html，只看 isSuccessful 会落盘一个
+     * 0 字节"语音文件"，而离线渲染优先用本地文件 → 点了必哑。所以这里校验响应体确实是
+     * 音频再落盘，并按嗅探到的格式补扩展名（ExoPlayer 对无扩展名 file:// 只能靠内容嗅探）。
+     * 全部候选地址都拿不到音频时返回 null，交给在线流兜底。
+     */
+    suspend fun downloadVoice(urls: List<String>, destFile: File): File? = withContext(Dispatchers.IO) {
+        for (url in urls) {
+            val body = fetchAudio(url) ?: continue
+            val extension = sniffAudioExtension(body) ?: continue
+            val file = File(destFile.parentFile, destFile.name + extension)
+            val written = runCatching {
+                destFile.parentFile?.mkdirs()
+                file.writeBytes(body)
+                file
+            }.onFailure { e -> Log.w(TAG, "voice write fail ${file.absolutePath}", e) }.isSuccess
+            if (written) return@withContext file
+        }
+        null
+    }
+
+    private suspend fun fetchAudio(url: String): ByteArray? = withContext(Dispatchers.IO) {
         try {
-            val request = Request.Builder().url(url).build()
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    Log.w(TAG, "voice http fail ${response.code} $url")
+            client.newCall(Request.Builder().url(url).build()).execute().use { response ->
+                val contentType = response.header("Content-Type").orEmpty()
+                if (!response.isSuccessful ||
+                    contentType.contains("html", true) ||
+                    contentType.contains("json", true)
+                ) {
+                    Log.w(TAG, "voice http reject ${response.code} $contentType $url")
                     return@withContext null
                 }
-                val body = response.body?.bytes() ?: return@withContext null
-                destFile.writeBytes(body)
-                destFile
+                response.body?.bytes()?.takeIf { it.size >= MIN_AUDIO_BYTES }
             }
         } catch (e: Exception) {
             Log.w(TAG, "voice download fail $url", e)
             null
+        }
+    }
+
+    /** 只认音频容器的文件头；空页面、错误 JSON、被劫持的 HTML 一律返回 null */
+    private fun sniffAudioExtension(body: ByteArray): String? {
+        fun magic(offset: Int, vararg bytes: Int): Boolean {
+            if (body.size < offset + bytes.size) return false
+            return bytes.indices.all { body[offset + it].toInt() and 0xFF == bytes[it] }
+        }
+
+        return when {
+            magic(0, 0x49, 0x44, 0x33) -> ".mp3"                       // ID3
+            magic(0, 0x66, 0x4C, 0x61, 0x43) -> ".flac"                 // fLaC
+            magic(0, 0x4F, 0x67, 0x67, 0x53) -> ".ogg"                  // OggS
+            magic(0, 0x23, 0x21, 0x41, 0x4D, 0x52) -> ".amr"            // #!AMR
+            magic(0, 0x52, 0x49, 0x46, 0x46) &&
+                magic(8, 0x57, 0x41, 0x56, 0x45) -> ".wav"              // RIFF....WAVE
+            magic(4, 0x66, 0x74, 0x79, 0x70) &&                         // ftyp box
+                magic(8, 0x41, 0x41, 0x4D, 0x46) -> ".aac"
+            magic(4, 0x66, 0x74, 0x79, 0x70) -> ".m4a"
+            magic(0, 0xFF) && (body[1].toInt() and 0xF6) == 0xF0 -> ".aac" // ADTS frame sync
+            else -> null
         }
     }
 
@@ -184,5 +229,8 @@ class BackupImageCompressor @Inject constructor() {
 
     companion object {
         private const val TAG = "BackupImageCompressor"
+
+        /** 小于此值的一律当作错误页/空响应，不当音频存档 */
+        private const val MIN_AUDIO_BYTES = 512
     }
 }

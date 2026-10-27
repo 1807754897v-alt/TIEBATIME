@@ -19,6 +19,7 @@ import com.huanchengfly.tieba.post.theme.colorscheme.GreenColorScheme
 import com.huanchengfly.tieba.post.theme.colorscheme.OrangeColorScheme
 import com.huanchengfly.tieba.post.theme.colorscheme.PinkColorScheme
 import com.huanchengfly.tieba.post.theme.colorscheme.PurpleColorScheme
+import com.huanchengfly.tieba.post.theme.colorscheme.SmartisanColorScheme
 import com.huanchengfly.tieba.post.theme.colorscheme.monetColorScheme
 import com.huanchengfly.tieba.post.ui.models.settings.Theme
 import com.huanchengfly.tieba.post.ui.models.settings.ThemeSettings
@@ -203,6 +204,7 @@ class AppThemeViewModel @Inject constructor(
                     Theme.PURPLE -> BuiltInTheme(theme, PurpleColorScheme)
                     Theme.PINK -> BuiltInTheme(theme, PinkColorScheme)
                     Theme.ORANGE -> BuiltInTheme(theme, OrangeColorScheme)
+                    Theme.SMARTISAN -> BuiltInTheme(theme, SmartisanColorScheme)
                 }
             }
         }

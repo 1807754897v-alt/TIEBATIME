@@ -17,11 +17,21 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.huanchengfly.tieba.post.R
+import com.huanchengfly.tieba.post.backup.BackupPaths
 import com.huanchengfly.tieba.post.backup.BackupRepository
 import com.huanchengfly.tieba.post.utils.NotificationUtils
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import java.util.concurrent.TimeUnit
+
+/**
+ * 备份任务模式。
+ *
+ * - [FETCH]：增量，只补新楼层/新语音；
+ * - [REBUILD]：整帖重抓并覆盖本地正文（旧版本抓的乱码正文只能靠这个修）；
+ * - [VOICES]：不重抓，只按正文里的 `[语音:md5:时长]` 补下缺失的语音文件。
+ */
+enum class LocalBackupMode { FETCH, REBUILD, VOICES }
 
 @HiltWorker
 class LocalBackupWorker @AssistedInject constructor(
@@ -38,6 +48,9 @@ class LocalBackupWorker @AssistedInject constructor(
         if (threadId <= 0L) return Result.failure()
         val forumId = inputData.getLong(KEY_FORUM_ID, 0L).takeIf { it != 0L }
         val seeLz = inputData.getBoolean(KEY_SEE_LZ, false)
+        val mode = inputData.getString(KEY_MODE)?.let { name ->
+            LocalBackupMode.entries.firstOrNull { it.name == name }
+        } ?: LocalBackupMode.FETCH
 
         createChannel()
         // Foreground service keeps long backups alive under aggressive OEM background rules
@@ -45,10 +58,22 @@ class LocalBackupWorker @AssistedInject constructor(
         runCatching { setForeground(buildForegroundInfo(title, indeterminate = true)) }
 
         return try {
+            if (mode == LocalBackupMode.VOICES) {
+                // 只补语音，不重抓楼层：给「有标记但没语音文件」的旧备份用
+                val repaired = backupRepository.repairVoices(
+                    BackupPaths.exportKey(threadId, seeLz)
+                )
+                showFinishedNotification(
+                    succeeded = true,
+                    detail = applicationContext.getString(R.string.local_backup_voice_repaired, repaired),
+                )
+                return Result.success()
+            }
             val result = backupRepository.backupThread(
                 threadId = threadId,
                 forumId = forumId,
                 seeLz = seeLz,
+                forceFull = mode == LocalBackupMode.REBUILD,
             ) { progress ->
                 setProgressAsync(
                     workDataOf(
@@ -155,19 +180,26 @@ class LocalBackupWorker @AssistedInject constructor(
         private const val KEY_THREAD_ID = "threadId"
         private const val KEY_FORUM_ID = "forumId"
         private const val KEY_SEE_LZ = "seeLz"
+        private const val KEY_MODE = "mode"
         private const val KEY_STAGE = "stage"
         private const val KEY_CURRENT = "current"
         private const val KEY_TOTAL = "total"
         private const val KEY_MESSAGE = "message"
 
         /** 单帖备份请求（批量备份时按序串联用） */
-        fun buildRequest(threadId: Long, forumId: Long? = null, seeLz: Boolean = false) =
+        fun buildRequest(
+            threadId: Long,
+            forumId: Long? = null,
+            seeLz: Boolean = false,
+            mode: LocalBackupMode = LocalBackupMode.FETCH,
+        ) =
             OneTimeWorkRequestBuilder<LocalBackupWorker>()
                 .setInputData(
                     workDataOf(
                         KEY_THREAD_ID to threadId,
                         KEY_FORUM_ID to (forumId ?: 0L),
                         KEY_SEE_LZ to seeLz,
+                        KEY_MODE to mode.name,
                     )
                 )
                 .addTag(TAG)
@@ -179,11 +211,12 @@ class LocalBackupWorker @AssistedInject constructor(
             threadId: Long,
             forumId: Long? = null,
             seeLz: Boolean = false,
+            mode: LocalBackupMode = LocalBackupMode.FETCH,
         ) {
             workManager.enqueueUniqueWork(
                 "$WORK_PREFIX$threadId",
                 ExistingWorkPolicy.REPLACE,
-                buildRequest(threadId, forumId, seeLz),
+                buildRequest(threadId, forumId, seeLz, mode),
             )
         }
     }

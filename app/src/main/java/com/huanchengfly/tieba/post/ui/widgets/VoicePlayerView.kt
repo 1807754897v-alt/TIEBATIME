@@ -487,6 +487,11 @@ class VoicePlayerView @JvmOverloads constructor(
             current = voicePlayerView
         }
 
+        /** 只有 dispose 掉的正是当前播放的那一条才释放单例，列表滚动不能互相当掉 */
+        fun releaseIfPlaying(voicePlayerView: VoicePlayerView?) {
+            if (voicePlayerView != null && current === voicePlayerView) release()
+        }
+
         fun release() {
             if (current != null) {
                 current!!.release()

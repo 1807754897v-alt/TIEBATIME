@@ -25,6 +25,7 @@ import com.huanchengfly.tieba.post.arch.TbLiteExceptionHandler
 import com.huanchengfly.tieba.post.arch.UiEvent
 import com.huanchengfly.tieba.post.backup.BackupRepository
 import com.huanchengfly.tieba.post.backup.LocalBackupStarter
+import com.huanchengfly.tieba.post.backup.VoiceMarker
 import com.huanchengfly.tieba.post.components.ClipBoardLinkDetector
 import com.huanchengfly.tieba.post.models.PicItem
 import com.huanchengfly.tieba.post.models.database.LocalBackupFloor
@@ -1117,21 +1118,22 @@ class ThreadViewModel @Inject constructor(
         fun inlineEmoticonLines(text: String): String =
             text.replace(Regex("\n+(#\\([^)\n]{1,30}\\))"), "$1")
                 .replace(Regex("(#\\([^)\n]{1,30}\\))\n+"), "$1")
-        // 备份时编码的语音标记 [语音:md5:秒] → 可播放的语音条目
-        val voiceRegex = Regex("\\[语音:([0-9a-zA-Z]+):(\\d+)]")
+        // 备份时编码的语音标记 [语音:md5:毫秒] → 可播放的语音条目
         // 全帖图集（data=null 时查看器直接用 picItems，离线可点击放大并跨楼层滑动）
         val renders = buildList {
             // #(表情码) → 原生表情（经典表情走内置 assets，离线可用）；语音标记拆成可播放条目
             if (content.isNotBlank()) {
-                val inlined = inlineEmoticonLines(content)
+                val inlined = VoiceMarker.normalize(inlineEmoticonLines(content))
                 var last = 0
-                voiceRegex.findAll(inlined).forEach { m ->
-                    val before = inlined.substring(last, m.range.first).trim('\n', ' ')
+                VoiceMarker.findAll(inlined).forEach { hit ->
+                    val before = inlined.substring(last, hit.start).trim('\n', ' ')
                     if (before.isNotBlank()) add(TextContentRender(before.emoticonString))
                     // 优先播放备份存档的本地语音文件，缺失时回退在线流
-                    val voiceLocal = images.firstOrNull { it.originalUrl == "voice:${m.groupValues[1]}" }
-                    add(VoiceContentRender(m.groupValues[1], m.groupValues[2].toInt(), voiceLocal?.localPath))
-                    last = m.range.last + 1
+                    // 同一段语音可能只记在首次出现的那一层，所以楼内找不到就查全帖
+                    val voiceLocal = images.firstOrNull { it.originalUrl == "voice:${hit.md5}" }
+                        ?: imagesByUrl["voice:${hit.md5}"]
+                    add(VoiceContentRender(hit.md5, hit.durationMs, voiceLocal?.localPath))
+                    last = hit.end + 1
                 }
                 val tail = inlined.substring(last).trim('\n', ' ')
                 if (tail.isNotBlank()) add(TextContentRender(tail.emoticonString))
@@ -1200,7 +1202,8 @@ class ThreadViewModel @Inject constructor(
             time = postTime,
             like = LikeZero,
             blocked = false,
-            plainText = content,
+            // 复制/屏蔽/搜索都读这个字段，不能带 [语音:md5:…] 原始标记；可播条目在 contentRenders 里
+            plainText = VoiceMarker.readable(content),
             contentRenders = renders,
             subPosts = subPostItems.ifEmpty { null },
             subPostNumber = subPostItems.size,

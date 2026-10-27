@@ -74,6 +74,7 @@ private fun getThemeNameRes(theme: Theme) = when (theme) {
     Theme.ORANGE -> R.string.theme_orange
     Theme.PINK -> R.string.theme_pink
     Theme.PURPLE -> R.string.theme_purple
+    Theme.SMARTISAN -> R.string.theme_smartisan
 }
 
 private fun getVariantNameRes(variant: Variant): Int = when (variant) {

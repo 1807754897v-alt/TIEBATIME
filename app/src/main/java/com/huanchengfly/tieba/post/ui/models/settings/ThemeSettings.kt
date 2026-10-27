@@ -5,7 +5,7 @@ import com.google.android.material.color.utilities.Variant
 import com.huanchengfly.tieba.post.theme.TiebaBlue
 
 enum class Theme {
-    TRANSLUCENT, CUSTOM, DYNAMIC, BLUE, GREEN, ORANGE, PINK, PURPLE, DARK_RED
+    TRANSLUCENT, CUSTOM, DYNAMIC, BLUE, GREEN, ORANGE, PINK, PURPLE, DARK_RED, SMARTISAN
 }
 
 /**

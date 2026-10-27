@@ -15,6 +15,7 @@ import com.huanchengfly.tieba.post.backup.BackupRepository
 import com.huanchengfly.tieba.post.backup.LocalBackupPrefs
 import com.huanchengfly.tieba.post.backup.LocalBackupStarter
 import com.huanchengfly.tieba.post.models.database.LocalBackupPost
+import com.huanchengfly.tieba.post.workers.LocalBackupMode
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -111,6 +112,26 @@ class LocalBackupViewModel @Inject constructor(
             threadId = post.threadId,
             forumId = post.forumId,
             seeLz = post.seeLz,
+        )
+    }
+
+    /** 重新备份：整帖重抓并覆盖本地正文，用于修复旧版本抓下的乱码楼层 */
+    fun rebuildBackup(post: LocalBackupPost) = launchInVM {
+        backupStarter.start(
+            threadId = post.threadId,
+            forumId = post.forumId,
+            seeLz = post.seeLz,
+            mode = LocalBackupMode.REBUILD,
+        )
+    }
+
+    /** 只补语音：正文已有 `[语音:md5:时长]` 标记、但语音文件缺失或存档无效的备份 */
+    fun repairVoices(post: LocalBackupPost) = launchInVM {
+        backupStarter.start(
+            threadId = post.threadId,
+            forumId = post.forumId,
+            seeLz = post.seeLz,
+            mode = LocalBackupMode.VOICES,
         )
     }
 

@@ -82,6 +82,8 @@
     <string name="local_backup_delete_message">将删除《%s》的本地备份内容，不可恢复。</string>
     <string name="local_backup_empty">还没有本地备份帖子。在帖子菜单里点「备份到本地」即可。</string>
     <string name="toast_backup_started">已开始本地备份</string>
+    <string name="toast_backup_rebuild_started">开始重新备份（整帖重抓）</string>
+    <string name="toast_backup_voice_repair_started">开始补下语音</string>
     <string name="toast_local_backup_done">本地备份完成：%1$d 楼 / %2$d 图</string>
     <string name="toast_backup_failed">本地备份失败：%s</string>
     <string name="title_backup_see_lz">备份只看楼主</string>
@@ -99,6 +101,11 @@
     <string name="local_backup_open_online">在线查看</string>
     <string name="local_backup_only_lz">只看楼主</string>
     <string name="local_backup_update">更新备份（增量同步新楼层）</string>
+    <string name="local_backup_update_title">更新这份备份</string>
+    <string name="local_backup_update_fmt_fetch">增量更新（只补新楼层、新语音）</string>
+    <string name="local_backup_update_fmt_voices">补下缺失语音（不重抓正文）</string>
+    <string name="local_backup_update_fmt_rebuild">重新备份（整帖重抓，覆盖旧正文）</string>
+    <string name="local_backup_voice_repaired">已补下 %1$d 条语音</string>
     <string name="title_local_backup_settings">本地备份设置</string>
     <string name="summary_settings_local_backup">离线阅读、导出导入、收藏时同步备份</string>
     <string name="settings_local_backup_entry">浏览与搜索你备份过的帖子（支持离线）</string>

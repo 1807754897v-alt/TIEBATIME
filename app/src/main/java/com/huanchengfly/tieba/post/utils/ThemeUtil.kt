@@ -25,6 +25,7 @@ import com.huanchengfly.tieba.post.theme.colorscheme.GreenColorScheme
 import com.huanchengfly.tieba.post.theme.colorscheme.OrangeColorScheme
 import com.huanchengfly.tieba.post.theme.colorscheme.PinkColorScheme
 import com.huanchengfly.tieba.post.theme.colorscheme.PurpleColorScheme
+import com.huanchengfly.tieba.post.theme.colorscheme.SmartisanColorScheme
 import com.huanchengfly.tieba.post.theme.colorscheme.dynamicColorScheme
 import com.huanchengfly.tieba.post.theme.colorscheme.monetColorScheme
 import com.huanchengfly.tieba.post.theme.colorscheme.translucentColorScheme
@@ -175,6 +176,7 @@ object ThemeUtil {
                 Theme.ORANGE -> OrangeColorScheme
                 Theme.PINK -> PinkColorScheme
                 Theme.PURPLE -> PurpleColorScheme
+                Theme.SMARTISAN -> SmartisanColorScheme
             }
         }
     }

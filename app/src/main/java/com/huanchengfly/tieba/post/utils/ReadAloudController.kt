@@ -6,6 +6,7 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.util.Log
 import com.huanchengfly.tieba.post.R
+import com.huanchengfly.tieba.post.backup.VoiceMarker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -18,9 +19,10 @@ import java.util.Locale
 /** 一条待朗读的内容（楼层号 + 文本 + 发帖时间） */
 data class ReadAloudItem(val floor: Int, val text: String, val time: Long = 0)
 
-/** 朗读前清洗文本：去掉贴吧表情码 #(...) 与 [图片] 占位 */
+/** 朗读前清洗文本：去掉贴吧表情码 #(...)、[图片] 占位与备份语音标记（含 md5，念出来是噪音） */
 fun String.sanitizeForTts(): String =
-    replace(Regex("#\\([^)]*\\)"), "")
+    VoiceMarker.strip(this)
+        .replace(Regex("#\\([^)]*\\)"), "")
         .replace("[图片]", "")
         .replace(Regex("\\s+"), " ")
         .trim()

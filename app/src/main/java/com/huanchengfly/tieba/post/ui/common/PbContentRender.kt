@@ -38,6 +38,8 @@ import com.huanchengfly.tieba.post.ui.widgets.compose.VoicePlayer
 import com.huanchengfly.tieba.post.ui.widgets.compose.mediaWidthFraction
 import com.huanchengfly.tieba.post.ui.widgets.compose.video.LocalVideoPreviewState
 import com.huanchengfly.tieba.post.utils.ThemeUtil
+import com.huanchengfly.tieba.post.utils.VoiceUrl
+import java.io.File
 
 @Immutable
 interface PbContentRender {
@@ -170,14 +172,17 @@ value class TextContentRender(val value: AnnotatedString) : PbContentRender {
 class VoiceContentRender(
     val voiceMd5: String,
     val duration: Int,
-    /** 离线备份的本地语音文件路径；空 = 在线流播放 */
+    /** 离线备份的本地语音文件路径；空或文件已失效 = 在线流播放 */
     val localPath: String? = null,
 ) : PbContentRender {
     @Composable
     override fun Render() {
-        val voiceUrl = remember {
-            localPath?.let { "file://$it" }
-                ?: "https://tiebac.baidu.com/c/p/voice?voice_md5=$voiceMd5&play_from=pb_voice_play"
+        // remember 必须带 key：Lazy 列表复用槽位，无 key 会残留上一条语音的地址
+        val voiceUrl = remember(localPath, voiceMd5) {
+            val local = localPath?.let { path ->
+                runCatching { File(path) }.getOrNull()?.takeIf { it.canRead() && it.length() > 0L }
+            }
+            local?.let { "file://${it.absolutePath}" } ?: VoiceUrl.online(voiceMd5)
         }
         VoicePlayer(url = voiceUrl, duration = duration)
     }

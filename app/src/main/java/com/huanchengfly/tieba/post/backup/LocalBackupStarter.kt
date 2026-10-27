@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.work.WorkManager
 import com.huanchengfly.tieba.post.R
 import com.huanchengfly.tieba.post.toastShort
+import com.huanchengfly.tieba.post.workers.LocalBackupMode
 import com.huanchengfly.tieba.post.workers.LocalBackupWorker
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -22,15 +23,22 @@ class LocalBackupStarter @Inject constructor(
         forumId: Long? = null,
         seeLz: Boolean = false,
         notify: Boolean = true,
+        mode: LocalBackupMode = LocalBackupMode.FETCH,
     ) {
         LocalBackupWorker.startNow(
             workManager = WorkManager.getInstance(context),
             threadId = threadId,
             forumId = forumId,
             seeLz = seeLz,
+            mode = mode,
         )
         if (notify) {
-            context.toastShort(R.string.toast_backup_started)
+            val message = when (mode) {
+                LocalBackupMode.FETCH -> R.string.toast_backup_started
+                LocalBackupMode.REBUILD -> R.string.toast_backup_rebuild_started
+                LocalBackupMode.VOICES -> R.string.toast_backup_voice_repair_started
+            }
+            context.toastShort(message)
         }
     }
 

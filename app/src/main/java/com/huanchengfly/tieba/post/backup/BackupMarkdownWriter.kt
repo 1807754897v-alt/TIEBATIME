@@ -51,7 +51,9 @@ object BackupMarkdownWriter {
             if (meta.isNotBlank()) sb.append(meta).append("  \n")
             sb.append('\n')
 
-            var content = floor.content
+            // 正文里的语音标记换成 [语音 N秒]；md/EPUB 阅读器放不了音频，
+            // 原样输出会露出一整串 md5
+            var content = VoiceMarker.readable(floor.content)
             val urls = floor.imageUrls.split('\n').map { it.trim() }.filter { it.isNotBlank() }
             urls.forEach { url ->
                 val img = imagesByFloor[floor.floorNumber]?.firstOrNull {

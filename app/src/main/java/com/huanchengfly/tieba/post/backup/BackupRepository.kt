@@ -12,6 +12,7 @@ import com.huanchengfly.tieba.post.ui.common.PicContentRender
 import com.huanchengfly.tieba.post.ui.common.PbContentRender
 import com.huanchengfly.tieba.post.ui.common.VoiceContentRender
 import com.huanchengfly.tieba.post.ui.page.thread.ThreadSortType
+import com.huanchengfly.tieba.post.utils.VoiceUrl
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
@@ -97,6 +98,93 @@ class BackupRepository @Inject constructor(
         post?.let { backupPaths.deleteBackupFiles(it.exportKey) }
     }
 
+    /** 语音存档结果：成功落盘的行 + 失败数（失败会把备份标成 PARTIAL） */
+    data class VoiceArchiveResult(val rows: List<LocalBackupImage>, val failed: Int)
+
+    /**
+     * 按楼层正文里的 `[语音:md5:时长]` 标记下载语音存档。
+     * 同一 md5 只存一份（贴吧允许重复转发同一段语音）。
+     */
+    private suspend fun archiveVoices(
+        floors: List<LocalBackupFloor>,
+        backupId: String,
+        threadId: Long,
+        voiceDir: File,
+        skipMd5: Set<String> = emptySet(),
+        onProgress: (current: Int, total: Int) -> Unit = { _, _ -> },
+    ): VoiceArchiveResult {
+        val targets = floors
+            .flatMap { floor -> VoiceMarker.findAll(floor.content).map { it.md5 to floor.floorNumber } }
+            .distinctBy { it.first }
+            .filter { it.first !in skipMd5 }
+        if (targets.isEmpty()) return VoiceArchiveResult(emptyList(), 0)
+        val rows = mutableListOf<LocalBackupImage>()
+        var failed = 0
+        targets.forEachIndexed { index, (md5, floorNumber) ->
+            val downloaded = imageCompressor.downloadVoice(
+                urls = VoiceUrl.candidates(md5),
+                destFile = File(voiceDir, "voice_$md5"),
+            )
+            if (downloaded != null) {
+                rows += LocalBackupImage(
+                    backupId = backupId,
+                    threadId = threadId,
+                    floorNumber = floorNumber,
+                    originalUrl = "voice:$md5",
+                    localPath = downloaded.absolutePath,
+                    width = null,
+                    height = null,
+                    bytes = downloaded.length(),
+                    compressed = false,
+                    compressPolicy = null,
+                )
+            } else {
+                failed++
+            }
+            onProgress(index + 1, targets.size)
+        }
+        return VoiceArchiveResult(rows, failed)
+    }
+
+    /**
+     * 只补语音，不重新抓取楼层：用于「正文已有 `[语音:md5:...]` 标记、但语音文件缺失或存档无效」
+     * 的旧备份（语音存档能力上线之前做的备份）。
+     *
+     * @return 本次成功补下的语音条数
+     */
+    suspend fun repairVoices(backupId: String): Int = withContext(Dispatchers.IO) {
+        val post = localBackupDao.getPost(backupId) ?: return@withContext 0
+        val floors = localBackupDao.listFloors(backupId)
+        val rows = localBackupDao.listImages(backupId)
+        // 已有且文件可读非空的不重复下载；0 字节的旧存档会被重下并替换
+        val archived = rows
+            .filter { it.originalUrl.startsWith("voice:") }
+            .filter { runCatching { File(it.localPath).length() > 0L }.getOrDefault(false) }
+            .map { it.originalUrl.removePrefix("voice:") }
+            .toSet()
+        val archive = archiveVoices(
+            floors = floors,
+            backupId = backupId,
+            threadId = post.threadId,
+            voiceDir = backupPaths.voiceDir(post.exportKey),
+            skipMd5 = archived,
+        )
+        if (archive.rows.isEmpty()) return@withContext 0
+        localBackupDao.insertImages(archive.rows)
+        val total = localBackupDao.listImages(backupId)
+        localBackupDao.getPost(backupId)?.let {
+            localBackupDao.upsertPost(
+                it.copy(
+                    imageCount = total.size,
+                    totalBytes = it.totalBytes + archive.rows.sumOf(LocalBackupImage::bytes),
+                    backupAt = System.currentTimeMillis(),
+                )
+            )
+        }
+        Log.i(TAG, "repairVoices $backupId ok=${archive.rows.size} failed=${archive.failed}")
+        archive.rows.size
+    }
+
     suspend fun isFavoritePromptDismissed(): Boolean =
         prefsStore.snapshot().favoritePromptDismissed
 
@@ -148,6 +236,7 @@ class BackupRepository @Inject constructor(
         threadId: Long,
         forumId: Long? = null,
         seeLz: Boolean = false,
+        forceFull: Boolean = false,
         onProgress: ((BackupProgress) -> Unit)? = null,
     ): BackupResult = withContext(Dispatchers.IO) {
         val prefs = prefsStore.snapshot()
@@ -155,7 +244,6 @@ class BackupRepository @Inject constructor(
         val backupId = exportKey
         val imageDir = backupPaths.imageDir(exportKey)
         val crawledFloors = mutableListOf<LocalBackupFloor>()
-        val crawledImages = mutableListOf<LocalBackupImage>()
         val seenPostIds = mutableSetOf<Long>()
         val avatarCache = mutableMapOf<String, String>() // avatarUrl -> local path
         val subPostRows = mutableListOf<LocalBackupSubPost>()
@@ -201,7 +289,8 @@ class BackupRepository @Inject constructor(
         onProgress?.invoke(BackupProgress(BackupProgress.Stage.FETCHING, message = "获取帖子…"))
 
         // 增量更新：已有备份时只补新增楼层/图片，不重下旧图
-        val existingFloors = localBackupDao.listFloors(backupId)
+        // forceFull（重新备份）跳过增量：旧楼层正文可能是乱码修复前抓的文本，只能整帖重抓
+        val existingFloors = if (forceFull) emptyList() else localBackupDao.listFloors(backupId)
         val incremental = existingFloors.isNotEmpty()
         val oldTotalPages = localBackupDao.getPost(backupId)?.totalPages
         seenPostIds.addAll(existingFloors.map { it.postId })
@@ -260,8 +349,10 @@ class BackupRepository @Inject constructor(
                                 val voices = post.contentRenders.filterIsInstance<VoiceContentRender>()
                                 var vi = 0
                                 Regex(Regex.escape(PbContentRender.MEDIA_VOICE)).replace(post.plainText ?: "") {
-                                    voices.getOrNull(vi++)?.let { v -> "[语音:${v.voiceMd5}:${v.duration}]" }
-                                        ?: PbContentRender.MEDIA_VOICE
+                                    voices.getOrNull(vi++)?.let { v ->
+                                        VoiceMarker.encode(v.voiceMd5, v.duration)
+                                            ?: PbContentRender.MEDIA_VOICE
+                                    } ?: PbContentRender.MEDIA_VOICE
                                 }
                             },
                             isLz = post.author.isLz,
@@ -425,41 +516,28 @@ class BackupRepository @Inject constructor(
                 }
 
                 // 语音文件存档（originalUrl = voice:<md5>，复用图片表结构）
-                val voiceRegex = Regex("\\[语音:([0-9a-zA-Z]+):(\\d+)]")
-                val allVoices = crawledFloors.flatMap { f ->
-                    voiceRegex.findAll(f.content).map { m -> m.groupValues[1] to f.floorNumber }
-                }.distinctBy { it.first }
-                if (allVoices.isNotEmpty()) {
-                    onProgress?.invoke(BackupProgress(BackupProgress.Stage.IMAGES, message = "下载语音…"))
-                    val voiceDir = backupPaths.voiceDir(exportKey)
-                    allVoices.forEachIndexed { index, (md5, floorNumber) ->
-                        val downloaded = imageCompressor.downloadVoice(
-                            url = "https://tiebac.baidu.com/c/p/voice?voice_md5=$md5&play_from=pb_voice_play",
-                            destFile = File(voiceDir, "voice_$md5"),
+                val voiceArchive = archiveVoices(
+                    floors = crawledFloors,
+                    backupId = backupId,
+                    threadId = threadId,
+                    voiceDir = backupPaths.voiceDir(exportKey),
+                ) { current, total ->
+                    onProgress?.invoke(
+                        BackupProgress(
+                            BackupProgress.Stage.IMAGES,
+                            current = current,
+                            total = total,
+                            message = "下载语音…",
                         )
-                        if (downloaded != null) {
-                            imageCount++
-                            imageBytes += downloaded.length()
-                            pendingImages.add(
-                                LocalBackupImage(
-                                    backupId = backupId,
-                                    threadId = threadId,
-                                    floorNumber = floorNumber,
-                                    originalUrl = "voice:$md5",
-                                    localPath = downloaded.absolutePath,
-                                    width = null,
-                                    height = null,
-                                    bytes = downloaded.length(),
-                                    compressed = false,
-                                    compressPolicy = null,
-                                )
-                            )
-                        } else {
-                            failedImages++
-                        }
-                        if (pendingImages.size >= 20) flushImages()
-                    }
+                    )
                 }
+                voiceArchive.rows.forEach { row ->
+                    imageCount++
+                    imageBytes += row.bytes
+                    pendingImages.add(row)
+                    if (pendingImages.size >= 20) flushImages()
+                }
+                failedImages += voiceArchive.failed
                 flushImages()
             }
 
@@ -468,8 +546,7 @@ class BackupRepository @Inject constructor(
             // 增量时统计与 Markdown 需覆盖旧数据 + 新增
             val allFloors: List<LocalBackupFloor> =
                 if (incremental) localBackupDao.listFloors(backupId) else crawledFloors
-            val allImages: List<LocalBackupImage> =
-                if (incremental) localBackupDao.listImages(backupId) else crawledImages
+            val allImages: List<LocalBackupImage> = localBackupDao.listImages(backupId)
             if (incremental) {
                 imageCount = allImages.size
                 imageBytes = allImages.sumOf { it.bytes }

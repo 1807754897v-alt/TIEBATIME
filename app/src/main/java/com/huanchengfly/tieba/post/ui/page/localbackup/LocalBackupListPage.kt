@@ -56,6 +56,7 @@ import com.huanchengfly.tieba.post.ui.widgets.compose.MyScaffold
 import com.huanchengfly.tieba.post.ui.widgets.compose.PullToRefreshBox
 import com.huanchengfly.tieba.post.ui.widgets.compose.TitleCentredToolbar
 import com.huanchengfly.tieba.post.ui.widgets.compose.states.StateScreen
+import com.huanchengfly.tieba.post.workers.LocalBackupMode
 
 @Composable
 fun LocalBackupListPage(
@@ -65,6 +66,7 @@ fun LocalBackupListPage(
     var query by remember { mutableStateOf("") }
     var deleteTarget by remember { mutableStateOf<LocalBackupPost?>(null) }
     var exportTarget by remember { mutableStateOf<LocalBackupPost?>(null) }
+    var updateTarget by remember { mutableStateOf<LocalBackupPost?>(null) }
 
     // SAF 结果回调可能晚于进程重建（MIUI 后台查杀），跨重建保存待导出目标，避免 0B 文件
     var pendingExportId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -230,7 +232,7 @@ fun LocalBackupListPage(
                                         )
                                     )
                                 },
-                                onUpdate = { viewModel.updateBackup(post) },
+                                onUpdate = { updateTarget = post },
                                 onExport = { exportTarget = post },
                                 onDelete = { deleteTarget = post },
                             )
@@ -238,6 +240,51 @@ fun LocalBackupListPage(
                     }
                 }
             }
+        }
+
+        updateTarget?.let { target ->
+            AlertDialog(
+                onDismissRequest = { updateTarget = null },
+                title = { Text(stringResource(id = R.string.local_backup_update_title)) },
+                text = {
+                    Column {
+                        Text(
+                            text = target.title,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(bottom = 8.dp),
+                        )
+                        listOf(
+                            LocalBackupMode.FETCH to R.string.local_backup_update_fmt_fetch,
+                            LocalBackupMode.VOICES to R.string.local_backup_update_fmt_voices,
+                            LocalBackupMode.REBUILD to R.string.local_backup_update_fmt_rebuild,
+                        ).forEach { (mode, label) ->
+                            TextButton(
+                                onClick = {
+                                    updateTarget = null
+                                    when (mode) {
+                                        LocalBackupMode.VOICES -> viewModel.repairVoices(target)
+                                        LocalBackupMode.REBUILD -> viewModel.rebuildBackup(target)
+                                        LocalBackupMode.FETCH -> viewModel.updateBackup(target)
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(
+                                    text = stringResource(id = label),
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = {
+                    TextButton(onClick = { updateTarget = null }) {
+                        Text(stringResource(id = R.string.action_cancel))
+                    }
+                },
+            )
         }
 
         deleteTarget?.let { target ->

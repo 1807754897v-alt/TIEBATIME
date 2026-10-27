@@ -62,6 +62,14 @@ object BackupExporter {
 
     private fun imagesByFloor(images: List<LocalBackupImage>) = images.groupBy { it.floorNumber }
 
+    /**
+     * 语音存档和图片共用 [LocalBackupImage] 表（originalUrl 前缀 `voice:`）。
+     * 导出成书时语音不是图片：EPUB 会把它们当 image/webp 写进 manifest，PDF 会拿 mp3 去 decode。
+     */
+    private fun LocalBackupImage.isVoice(): Boolean = originalUrl.startsWith("voice:")
+
+    private fun pictureRows(images: List<LocalBackupImage>) = images.filterNot { it.isVoice() }
+
     fun suggestName(post: LocalBackupPost, format: Format): String =
         "${post.title.ifBlank { post.exportKey }}.${format.extension}"
             .replace(Regex("[\\\\/:*?\"<>|]"), "_")
@@ -84,7 +92,9 @@ object BackupExporter {
             images.forEach { img ->
                 val file = File(img.localPath)
                 if (file.exists()) {
-                    zip.putFileEntry("images/${post.exportKey}/${file.name}", file)
+                    // 语音单独放 voices/，images/ 只留图片，保持 Shelf 包结构可被转换器读取
+                    val dir = if (img.isVoice()) "voices" else "images"
+                    zip.putFileEntry("$dir/${post.exportKey}/${file.name}", file)
                 }
             }
         }
@@ -114,10 +124,11 @@ object BackupExporter {
             }
             sb.appendLine(who)
             sb.appendLine()
-            if (floor.content.isBlank()) {
+            val body = VoiceMarker.readable(floor.content)
+            if (body.isBlank()) {
                 sb.appendLine("（本层无文字内容）")
             } else {
-                sb.appendLine(floor.content)
+                sb.appendLine(body)
             }
             floor.imageUrls.split('\n').map { it.trim() }
                 .filter { it.isNotBlank() }
@@ -213,14 +224,15 @@ object BackupExporter {
             spacingAfter = 10f,
         )
 
-        val byFloor = imagesByFloor(images)
+        val byFloor = imagesByFloor(pictureRows(images))
         floors.sortedBy { it.floorNumber }.forEach { floor ->
             // 作者行：楼主徽标 + 昵称 + 灰色楼层/时间/IP
             drawStatic(authorLine(floor), TextPaint(), spacingAfter = 3f)
             // 内容
-            if (floor.content.isNotBlank()) {
+            val body = VoiceMarker.readable(floor.content)
+            if (body.isNotBlank()) {
                 drawStatic(
-                    floor.content,
+                    body,
                     TextPaint().apply { color = COLOR_TEXT; textSize = 10.5f },
                     spacingAfter = 4f,
                 )
@@ -338,7 +350,7 @@ object BackupExporter {
         val uuid = UUID.randomUUID().toString()
         val sorted = floors.sortedBy { it.floorNumber }
         val chapters = sorted.chunked(CHAPTER_FLOORS)
-        val byFloor = imagesByFloor(images)
+        val byFloor = imagesByFloor(pictureRows(images))
         val usedImageNames = mutableMapOf<String, String>() // localPath -> epub name
 
         ZipOutputStream(output.buffered()).use { zip ->
@@ -356,7 +368,7 @@ object BackupExporter {
 
             zip.putEntry("META-INF/container.xml", containerXml())
 
-            images.forEach { img ->
+            pictureRows(images).forEach { img ->
                 val file = File(img.localPath)
                 if (file.exists()) {
                     val name = "img_${usedImageNames.size + 1}.${file.extension.ifBlank { "webp" }}"
@@ -473,8 +485,9 @@ $points
             sb.append("    <p class=\"author\">")
             if (floor.isLz) sb.append("<span class=\"lz\">楼主</span> ")
             sb.appendLine("${xmlEscape(floor.authorName ?: "未知作者")} <span class=\"floorinfo\">${xmlEscape(floorTitle(floor).let { if (floor.isLz) it.removePrefix("楼主 · ") else it })}</span></p>")
-            if (floor.content.isNotBlank()) {
-                floor.content.split('\n').filter { it.isNotBlank() }.forEach { line ->
+            val body = VoiceMarker.readable(floor.content)
+            if (body.isNotBlank()) {
+                body.split('\n').filter { it.isNotBlank() }.forEach { line ->
                     sb.appendLine("    <p>${xmlEscape(line)}</p>")
                 }
             }
