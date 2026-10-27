@@ -78,6 +78,7 @@ class ForumThreadListViewModel @AssistedInject constructor(
         _uiState.update {
             ForumThreadListUiState(
                 goodClassifyId = it.goodClassifyId,
+                sortType = sortType,
                 threads = data.threads,
                 threadIds = data.threadIds,
                 currentPage = 1,

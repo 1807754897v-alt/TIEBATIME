@@ -76,8 +76,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastForEach
 import androidx.compose.ui.util.lerp
-import androidx.core.util.getOrDefault
-import androidx.core.util.set
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
@@ -213,7 +211,7 @@ fun ForumPage(
     val forumTabs: List<FrsTabInfo> by remember {
         derivedStateOf { context.buildForumTabs(uiState.forum?.navTabInfo) }
     }
-    val forumSortTypes = viewModel.forumSortTypes
+    val forumSortTypes = uiState.sortTypes
     val defaultSortType = LocalHabitSettings.current.forumSortType
 
     val pagerState = rememberPagerState { forumTabs.size }
@@ -414,7 +412,6 @@ fun ForumPage(
                     onSortTypeChanged = { newSortType ->
                         val currentTabId = forumTabs[pagerState.currentPage].tabId
                         viewModel.onSortTypeChanged(currentTabId, newSortType)
-                        forumSortTypes[currentTabId] = newSortType
                     },
                 )
 
@@ -483,7 +480,7 @@ fun ForumPage(
                     verticalAlignment = Alignment.Top,
                 ) { page ->
                     val currentTab = forumTabs[page]
-                    val initialSortType = forumSortTypes.getOrDefault(key = currentTab.tabId, defaultSortType)
+                    val initialSortType = forumSortTypes.getOrDefault(currentTab.tabId, defaultSortType)
                     when (currentTab.tabId) {
                         TAB_FORUM_LATEST, TAB_FORUM_GOOD -> {
                             forumThreadPages[page](contentPadding, forumData, initialSortType)

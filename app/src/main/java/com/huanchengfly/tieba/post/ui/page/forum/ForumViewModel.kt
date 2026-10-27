@@ -2,7 +2,6 @@ package com.huanchengfly.tieba.post.ui.page.forum
 
 import android.content.Context
 import android.content.Intent
-import android.util.SparseIntArray
 import androidx.compose.runtime.Stable
 import androidx.core.net.toUri
 import androidx.lifecycle.SavedStateHandle
@@ -15,6 +14,7 @@ import com.huanchengfly.tieba.post.arch.UiEvent
 import com.huanchengfly.tieba.post.arch.emitGlobalEventSuspend
 import com.huanchengfly.tieba.post.models.database.ForumHistory
 import com.huanchengfly.tieba.post.repository.ForumRepository
+import com.huanchengfly.tieba.post.repository.ForumSortPreferences
 import com.huanchengfly.tieba.post.repository.HistoryRepository
 import com.huanchengfly.tieba.post.ui.models.forum.ForumData
 import com.huanchengfly.tieba.post.ui.models.settings.ForumFAB
@@ -41,6 +41,7 @@ class ForumViewModel @Inject constructor(
     @ApplicationContext val context: Context,
     private val forumRepo: ForumRepository,
     private val historyRepo: HistoryRepository,
+    private val sortPreferences: ForumSortPreferences,
     savedStateHandle: SavedStateHandle
 ) : BaseStateViewModel<ForumUiState>() {
 
@@ -55,8 +56,6 @@ class ForumViewModel @Inject constructor(
 
     override fun createInitialState(): ForumUiState = ForumUiState()
 
-    val forumSortTypes = SparseIntArray()
-
     private var forumSignInJob: Job? = null
     private var forumLikeJob: Job? = null
 
@@ -66,9 +65,10 @@ class ForumViewModel @Inject constructor(
 
     private fun requestLoadForm() = launchInVM {
         _uiState.set { copy(forum = null, error = null) }
+        val savedSortTypes = sortPreferences.load(forumName)
         val forumData = forumRepo.loadForumInfo(forumName)
         ensureActive()
-        _uiState.set { copy(forum = forumData) }
+        _uiState.set { copy(forum = forumData, sortTypes = savedSortTypes) }
         recordHistory(forumData)
     }
 
@@ -81,6 +81,8 @@ class ForumViewModel @Inject constructor(
     }
 
     fun onSortTypeChanged(tabId: Int, @ForumSortType sortType: Int) = launchInVM {
+        sortPreferences.save(forumName, tabId, sortType)
+        _uiState.set { copy(sortTypes = sortTypes + (tabId to sortType)) }
         sendUiEvent(ForumUiEvent.ScrollToTop(tabId))
         delay(200) // wait ScrollToTop animation
         val event = when(tabId) {
@@ -216,6 +218,7 @@ class ForumViewModel @Inject constructor(
 data class ForumUiState(
     val forum: ForumData? = null,
     val goodClassifyId: Int? = null,
+    val sortTypes: Map<Int, Int> = emptyMap(),
     val error: Throwable? = null
 )
 

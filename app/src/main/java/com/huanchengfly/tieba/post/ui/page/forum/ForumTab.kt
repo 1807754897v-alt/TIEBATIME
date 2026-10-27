@@ -1,6 +1,5 @@
 package com.huanchengfly.tieba.post.ui.page.forum
 
-import android.util.SparseIntArray
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -28,7 +27,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.fastForEachIndexed
-import androidx.core.util.getOrDefault
 import com.huanchengfly.tieba.post.LocalHabitSettings
 import com.huanchengfly.tieba.post.R
 import com.huanchengfly.tieba.post.api.models.protos.FrsTabInfo
@@ -85,7 +83,7 @@ fun ForumTab(
     modifier: Modifier = Modifier,
     pagerState: PagerState,
     tabs: List<FrsTabInfo>,
-    sortTypes: SparseIntArray,
+    sortTypes: Map<Int, Int>,
     onSortTypeChanged: (sortType: Int) -> Unit,
 ) {
     val currentPage = pagerState.currentPage
