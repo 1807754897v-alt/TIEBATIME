@@ -102,7 +102,7 @@
     <string name="local_backup_only_lz">只看楼主</string>
     <string name="local_backup_update">更新备份（增量同步新楼层）</string>
     <string name="local_backup_update_title">更新这份备份</string>
-    <string name="local_backup_update_fmt_fetch">增量更新（只补新楼层、新语音）</string>
+    <string name="local_backup_update_fmt_fetch">增量更新（补新楼层、新语音，同步楼中楼）</string>
     <string name="local_backup_update_fmt_voices">补下缺失语音（不重抓正文）</string>
     <string name="local_backup_update_fmt_rebuild">重新备份（整帖重抓，覆盖旧正文）</string>
     <string name="local_backup_voice_repaired">已补下 %1$d 条语音</string>

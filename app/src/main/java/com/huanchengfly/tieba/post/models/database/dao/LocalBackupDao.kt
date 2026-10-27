@@ -52,6 +52,12 @@ interface LocalBackupDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSubPosts(subPosts: List<LocalBackupSubPost>)
 
+    @Transaction
+    suspend fun replaceSubPostsByPost(backupId: String, postId: Long, subPosts: List<LocalBackupSubPost>) {
+        deleteSubPostsByPost(backupId, postId)
+        insertSubPosts(subPosts)
+    }
+
     @Query("DELETE FROM local_backup_subposts WHERE backupId = :backupId")
     suspend fun deleteSubPosts(backupId: String)
 

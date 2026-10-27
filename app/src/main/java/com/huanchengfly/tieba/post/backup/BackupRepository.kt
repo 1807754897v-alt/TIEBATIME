@@ -37,6 +37,7 @@ class BackupRepository @Inject constructor(
     private val backupPaths: BackupPaths,
     private val imageCompressor: BackupImageCompressor,
     private val prefsStore: LocalBackupPrefsStore,
+    private val subPostRefresher: BackupSubPostRefresher,
 ) {
     data class BackupProgress(
         val stage: Stage,
@@ -246,7 +247,7 @@ class BackupRepository @Inject constructor(
         val crawledFloors = mutableListOf<LocalBackupFloor>()
         val seenPostIds = mutableSetOf<Long>()
         val avatarCache = mutableMapOf<String, String>() // avatarUrl -> local path
-        val subPostRows = mutableListOf<LocalBackupSubPost>()
+        val refreshedPostIds = mutableSetOf<Long>()
         var totalPages: Int? = null
         var title = ""
         var forumName: String? = null
@@ -292,7 +293,6 @@ class BackupRepository @Inject constructor(
         // forceFull（重新备份）跳过增量：旧楼层正文可能是乱码修复前抓的文本，只能整帖重抓
         val existingFloors = if (forceFull) emptyList() else localBackupDao.listFloors(backupId)
         val incremental = existingFloors.isNotEmpty()
-        val oldTotalPages = localBackupDao.getPost(backupId)?.totalPages
         seenPostIds.addAll(existingFloors.map { it.postId })
 
         try {
@@ -326,6 +326,10 @@ class BackupRepository @Inject constructor(
 
                 val pageFloors = mutableListOf<LocalBackupFloor>()
                 suspend fun addFloor(post: com.huanchengfly.tieba.post.ui.models.PostData) {
+                    // Existing floors still need their replies refreshed, even without new floors.
+                    if (refreshedPostIds.add(post.id)) {
+                        subPostRefresher.refresh(backupId, threadId, thread.simpleForum.first, post, prefs.maxPages)
+                    }
                     if (!seenPostIds.add(post.id)) return
                     if (authorId == null && post.author.isLz) {
                         authorId = post.author.id
@@ -365,23 +369,6 @@ class BackupRepository @Inject constructor(
                             authorAvatar = avatarPath,
                         )
                     )
-                    // 楼中楼预览（pbPage 每楼返回的子回复列表）
-                    post.subPosts.orEmpty().forEach { sub ->
-                        subPostRows.add(
-                            LocalBackupSubPost(
-                                backupId = backupId,
-                                threadId = threadId,
-                                postId = post.id,
-                                floorNumber = floorNumber,
-                                subPostId = sub.id,
-                                authorId = sub.authorId,
-                                authorName = sub.author.nameShow.ifBlank { sub.author.name },
-                                content = sub.plainText,
-                                postTime = sub.time,
-                                isLz = sub.author.isLz,
-                            )
-                        )
-                    }
                 }
                 // 1楼 arrives as firstPost, not in post_list (which only keeps floor >= 2).
                 // Especially for see_lz backups this is often the LZ's only post.
@@ -391,21 +378,10 @@ class BackupRepository @Inject constructor(
                 if (pageFloors.isNotEmpty()) {
                     crawledFloors += pageFloors
                     localBackupDao.insertFloors(pageFloors)
-                    if (subPostRows.isNotEmpty()) {
-                        // 该页楼层对应的楼中楼整体替换
-                        pageFloors.forEach { f -> localBackupDao.deleteSubPostsByPost(backupId, f.postId) }
-                        localBackupDao.insertSubPosts(subPostRows.toList())
-                        subPostRows.clear()
-                    }
                     if (!incremental) {
                         localBackupDao.upsertPost(entity(LocalBackupPost.STATUS_PENDING))
                     }
                 }
-                // 增量：翻到旧数据最后一页仍无新楼 → 视为无更新
-                if (incremental && pageFloors.isEmpty() && oldTotalPages != null && page >= oldTotalPages) {
-                    hasMore = false
-                }
-
                 onProgress?.invoke(
                     BackupProgress(
                         BackupProgress.Stage.FETCHING,
@@ -427,18 +403,18 @@ class BackupRepository @Inject constructor(
             }
 
             if (incremental && crawledFloors.isEmpty()) {
-                // 无新增楼层：仅刷新 backupAt 表示检查过更新
+                // 无新增楼层时也已刷新各层楼中楼，更新检查时间
                 localBackupDao.getPost(backupId)?.let {
                     localBackupDao.upsertPost(it.copy(backupAt = System.currentTimeMillis()))
                 }
-                onProgress?.invoke(BackupProgress(BackupProgress.Stage.DONE, message = "备份无更新"))
+                onProgress?.invoke(BackupProgress(BackupProgress.Stage.DONE, message = "楼中楼已同步，无新增楼层"))
                 return@withContext BackupResult(
                     backupId = backupId,
                     status = LocalBackupPost.STATUS_OK,
                     floors = 0,
                     images = 0,
                     bytes = 0,
-                    message = "备份无更新",
+                    message = "楼中楼已同步，无新增楼层",
                 )
             }
 
